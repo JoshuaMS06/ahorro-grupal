@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'firebase/auth';
-import { getDatabase, ref, onValue, get, runTransaction } from 'firebase/database';
+import { getDatabase, ref, onValue, runTransaction } from 'firebase/database';
 import {
   ArrowDownRight, ArrowRight, ArrowUpRight, CalendarDays, CheckCheck, CheckCircle2,
   CloudOff, Copy, Download, Eye, EyeOff, Filter,
@@ -118,6 +118,8 @@ export default function App() {
   const [uidParaAutorizar, setUidParaAutorizar] = useState('');
   const [detallePermiso, setDetallePermiso] = useState('');
   const [authBusy, setAuthBusy] = useState(false);
+  const [revisionPermiso, setRevisionPermiso] = useState(0);
+  const [revisandoPermiso, setRevisandoPermiso] = useState(false);
   const [operacion, setOperacion] = useState('');
   const [mensaje, setMensaje] = useState('');
   const [confirmarSemana, setConfirmarSemana] = useState(false);
@@ -143,42 +145,72 @@ export default function App() {
     return () => cancel();
   }, []);
 
+  // Escucha el permiso en tiempo real. No cerramos la sesión por un primer
+  // resultado vacío: Firebase puede estar terminando de sincronizar el token.
+  // El backend sigue siendo el único que decide si se autorizan escrituras.
   useEffect(() => {
-    let request = 0;
-    const cancel = onAuthStateChanged(auth, async (signedUser) => {
-      const currentRequest = ++request;
-      setUsuario(signedUser);
+    let activo = true;
+    let cancelarLectura = () => {};
+    let uidEnEscucha = '';
+    const cancelarAuth = onAuthStateChanged(auth, (cuenta) => {
+      cancelarLectura();
+      cancelarLectura = () => {};
+      uidEnEscucha = cuenta?.uid || '';
+      setUsuario(cuenta);
       setAdmin(false);
-      setValidandoAdmin(Boolean(signedUser));
-      if (!signedUser) { setValidandoAdmin(false); return; }
-      try {
-        const result = await get(ref(database, `adminUids/${signedUser.uid}`));
-        if (currentRequest !== request) return;
-        const autorizado = result.val() === true;
-        setAdmin(autorizado);
-        if (!autorizado) {
-          setUidParaAutorizar(signedUser.uid);
-          setDetallePermiso(!result.exists()
-            ? 'Firebase no encontró una entrada para este UID dentro de adminUids.'
-            : (typeof result.val() === 'string' && result.val().trim().toLowerCase() === 'true')
-              ? 'El valor está guardado como texto «true». Debe ser de tipo Boolean (true sin comillas).'
-              : 'La entrada existe, pero su valor no es el booleano true.');
-        } else {
-          setUidParaAutorizar('');
-          setDetallePermiso('');
-        }
-      } catch (error) {
-        if (currentRequest !== request) return;
-        console.error('Error al consultar permisos:', error);
-        setUidParaAutorizar(signedUser.uid);
-        setDetallePermiso('Firebase rechazó o no completó la consulta a adminUids. Revisa las reglas publicadas para la lectura del propio UID.');
-        setAuthError('No fue posible verificar tus permisos. Revisa las reglas de Firebase.');
-      } finally {
-        if (currentRequest === request) setValidandoAdmin(false);
+      setUidParaAutorizar(cuenta?.uid || '');
+      setDetallePermiso('');
+      setValidandoAdmin(Boolean(cuenta));
+      if (!cuenta) {
+        setAuthError('');
+        return;
       }
+      const uid = cuenta.uid;
+      const rutaPermiso = `adminUids/${uid}`;
+      cancelarLectura = onValue(
+        ref(database, rutaPermiso),
+        (snapshot) => {
+          if (!activo || uidEnEscucha !== uid) return;
+          const valor = snapshot.val();
+          const autorizado = valor === true;
+          setAdmin(autorizado);
+          setValidandoAdmin(false);
+          if (autorizado) {
+            setAuthError('');
+            setUidParaAutorizar('');
+            setDetallePermiso('');
+            setAdminOpen(false);
+            setContrasena('');
+          } else {
+            setUidParaAutorizar(uid);
+            setAuthError('La cuenta inició sesión, pero el permiso de administración todavía no fue confirmado.');
+            if (valor === null) {
+              setDetallePermiso(`La consulta en vivo devolvió null en /${rutaPermiso}. Esto puede indicar un UID diferente en los datos o un problema de sincronización. La base consultada es ${firebaseConfig.databaseURL}.`);
+            } else if (typeof valor === 'string') {
+              setDetallePermiso(`Firebase respondió con un texto: ${JSON.stringify(valor)}. Debe ser true de tipo Boolean, sin comillas.`);
+            } else {
+              setDetallePermiso(`Firebase respondió con un valor de tipo ${typeof valor}: ${JSON.stringify(valor)}. El permiso requiere exactamente true (Boolean).`);
+            }
+          }
+        },
+        (error) => {
+          if (!activo || uidEnEscucha !== uid) return;
+          console.error('Error de lectura del permiso administrativo:', error);
+          setValidandoAdmin(false);
+          setAdmin(false);
+          setUidParaAutorizar(uid);
+          setAuthError('Firebase no permitió consultar el permiso administrativo.');
+          setDetallePermiso(`La lectura de /${rutaPermiso} falló: ${error?.code || error?.message || 'error desconocido'}. Revisa reglas y conexión; no desactives la seguridad.`);
+        },
+      );
     });
-    return () => { request++; cancel(); };
-  }, []);
+    return () => {
+      activo = false;
+      uidEnEscucha = '';
+      cancelarLectura();
+      cancelarAuth();
+    };
+  }, [revisionPermiso]);
 
   useEffect(() => {
     const onOnline = () => setOnline(navigator.onLine);
@@ -229,40 +261,39 @@ export default function App() {
   const submitAdmin = async (e) => {
     e.preventDefault();
     setAuthError('');
-    setUidParaAutorizar('');
     setDetallePermiso('');
     setAuthBusy(true);
     try {
-      const credential = await signInWithEmailAndPassword(auth, correo.trim(), contrasena);
-      const uid = credential.user.uid;
-      setUidParaAutorizar(uid);
-      const permission = await get(ref(database, `adminUids/${uid}`));
-      if (permission.val() !== true) {
-        const detalle = !permission.exists()
-          ? 'No existe una entrada adminUids para este UID. Agrégala directamente en Realtime Database → Data.'
-          : (typeof permission.val() === 'string' && permission.val().trim().toLowerCase() === 'true')
-            ? 'El valor está guardado como texto «true». Elige Boolean en Firebase y guarda true sin comillas.'
-            : 'Existe una entrada, pero su valor no es el booleano true. Corrige el tipo y el valor en Firebase.';
-        setDetallePermiso(detalle);
-        await signOut(auth);
-        setAuthError('La cuenta es válida, pero aún no está autorizada para administrar pagos.');
-      } else {
-        setAdmin(true);
-        setUidParaAutorizar('');
-        setDetallePermiso('');
-        setAdminOpen(false);
-        setContrasena('');
-        setMensaje('Sesión de administración iniciada.');
-      }
+      const credencial = await signInWithEmailAndPassword(auth, correo.trim(), contrasena);
+      // Aseguramos un token actualizado antes de repetir la suscripción.
+      await credencial.user.getIdToken(true);
+      setUidParaAutorizar(credencial.user.uid);
+      setContrasena('');
+      // El listener de onAuthStateChanged/onValue valida el permiso sin
+      // cerrar automáticamente la sesión ni confiar en el estado visual.
     } catch (error) {
-      if (/permission.?denied/i.test(String(error?.code || '') + ' ' + String(error?.message || ''))) {
-        setDetallePermiso('Firebase rechazó la lectura de adminUids. Comprueba que las reglas permiten a un usuario autenticado consultar su propia clave UID.');
-        setAuthError('No se pudieron consultar los permisos del administrador.');
-      } else {
-        setAuthError(friendlyAuthError(error));
-      }
+      console.error('No se pudo iniciar sesión:', error?.code || error);
+      setAuthError(friendlyAuthError(error));
     } finally {
       setAuthBusy(false);
+    }
+  };
+
+  const reintentarPermiso = async () => {
+    if (!auth.currentUser || revisandoPermiso) return;
+    setRevisandoPermiso(true);
+    setValidandoAdmin(true);
+    setAuthError('');
+    try {
+      await auth.currentUser.getIdToken(true);
+      // Reactiva el listener para obtener una comprobación nueva del servidor.
+      setRevisionPermiso((actual) => actual + 1);
+    } catch (error) {
+      console.error('No se pudo actualizar la sesión:', error);
+      setAuthError('No se pudo renovar la sesión. Comprueba tu conexión.');
+      setValidandoAdmin(false);
+    } finally {
+      setRevisandoPermiso(false);
     }
   };
 
@@ -419,7 +450,7 @@ export default function App() {
       {adminOpen && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setAdminOpen(false); }}>
         <div className="modal" role="dialog" aria-modal="true" aria-labelledby="admin-modal-title">
           <button type="button" className="modal-close" onClick={() => { setAdminOpen(false); setAuthError(''); }} aria-label="Cerrar"><X size={21}/></button>
-          {usuario && !admin && !validandoAdmin ? <><div className="modal-icon"><ShieldCheck size={27}/></div><h2 id="admin-modal-title">Cuenta sin autorización</h2><p>Iniciaste sesión, pero tu UID todavía no está autorizado como administrador de este ahorro.</p><div className="modal-warning">Solicita que agreguen tu UID en <code>adminUids</code> de Firebase Realtime Database.</div>{uidParaAutorizar && <div className="uid-debug"><span>UID exacto de tu cuenta:</span><code>{uidParaAutorizar}</code><button type="button" onClick={copiarUid}><Copy size={15}/> Copiar UID</button>{detallePermiso && <p>{detallePermiso}</p>}</div>}<button className="modal-submit" type="button" onClick={cerrarSesion}>Cerrar sesión</button></> : <>
+          {usuario && !admin && !validandoAdmin ? <><div className="modal-icon"><ShieldCheck size={27}/></div><h2 id="admin-modal-title">Verificación de permisos</h2><p>Tu cuenta inició sesión correctamente, pero Firebase todavía no confirmó el permiso administrativo.</p><div className="modal-warning">No vuelvas a crear tu usuario. Comprueba el resultado de lectura que aparece abajo.</div>{uidParaAutorizar && <div className="uid-debug"><span>UID exacto de tu cuenta:</span><code>{uidParaAutorizar}</code><button type="button" onClick={copiarUid}><Copy size={15}/> Copiar UID</button>{detallePermiso && <p>{detallePermiso}</p>}</div>}<button className="modal-submit" type="button" disabled={revisandoPermiso} onClick={reintentarPermiso}><RotateCw size={17}/> {revisandoPermiso ? 'Comprobando...' : 'Volver a comprobar el permiso'}</button><button className="forgot-password" type="button" onClick={cerrarSesion}>Cerrar sesión</button></> : <>
             <div className="modal-icon"><LockKeyhole size={26}/></div><h2 id="admin-modal-title">Acceso administrativo</h2><p>Solo las personas autorizadas pueden registrar aportaciones o avanzar semanas.</p>
             <form onSubmit={submitAdmin}><label htmlFor="admin-email">Correo electrónico</label><input id="admin-email" autoComplete="username" type="email" placeholder="tu-correo@ejemplo.com" required value={correo} onChange={(e) => setCorreo(e.target.value)}/><label htmlFor="admin-password">Contraseña</label><div className="password-field"><input id="admin-password" autoComplete="current-password" type={showPassword ? 'text' : 'password'} placeholder="Introduce tu contraseña" required value={contrasena} onChange={(e) => setContrasena(e.target.value)}/><button type="button" onClick={() => setShowPassword(!showPassword)} title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'} aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}>{showPassword ? <EyeOff size={19}/> : <Eye size={19}/>}</button></div>{authError && <div role="alert" className="form-error">{authError}</div>}<button disabled={authBusy || validandoAdmin} className="modal-submit" type="submit">{authBusy ? 'Verificando...' : <><ShieldCheck size={18}/> Entrar al panel</>}</button></form>{uidParaAutorizar && <div className="uid-debug"><span>UID exacto de tu cuenta:</span><code>{uidParaAutorizar}</code><button type="button" onClick={copiarUid}><Copy size={15}/> Copiar UID</button>{detallePermiso && <p>{detallePermiso}</p>}</div>}<button type="button" className="forgot-password" onClick={resetPassword} disabled={authBusy}>¿Olvidaste tu contraseña?</button>
           </>}
