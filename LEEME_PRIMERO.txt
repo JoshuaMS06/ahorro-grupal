@@ -1,0 +1,62 @@
+AHORRO GRUPAL — REDISEÑO COMPLETO
+=================================
+
+¡Ya se incluye el cerdito y el instalador web (PWA)!
+
+PARA CAMBIAR LA PÁGINA QUE YA TIENES PUBLICADA
+------------------------------------------------
+1. En tu PC, haz una COPIA DE SEGURIDAD de la carpeta original AppAhorro.
+2. Descomprime este ZIP.
+3. Abre la carpeta resultante, selecciona TODOS sus archivos y carpetas y
+   cópialos DENTRO de tu carpeta AppAhorro original, sobrescribiendo los archivos
+   repetidos. IMPORTANTE: NO BORRES la carpeta oculta .git de tu proyecto original.
+4. En VS Code, abre una terminal situada dentro de AppAhorro y ejecuta:
+
+   npm install
+   npm run dev
+
+5. Abre la dirección que aparezca en la terminal (por ejemplo localhost:5173).
+6. Si todo está bien, presiona Ctrl+C en la terminal y ejecuta:
+
+   npm run build
+   git add .
+   git commit -m "Rediseño Ahorro Grupal y PWA"
+   git push origin main
+
+7. Si Vercel está enlazado con esa rama de GitHub, debería desplegar automáticamente.
+8. Comprueba la página en ventana privada:
+   https://ahorro-grupal.vercel.app
+
+IMPORTANTE SOBRE FIREBASE Y LOS ADMINISTRADORES
+------------------------------------------------
+El acceso de administrador dejó de admitir solo un correo escrito; eso era
+inseguro. AHORA REQUIERE UNA CUENTA DE FIREBASE AUTHENTICATION Y AUTORIZACIÓN POR
+UID EN REALTIME DATABASE. Debes configurar esa parte manualmente en Firebase.
+
+Lee los pasos completos en README.md apartado "Configurar los administradores".
+No importes el ejemplo JSON sobre tus datos reales. El código conserva el árbol
+"ahorro" actual y no elimina ni reinicia aportaciones.
+
+No cambies las reglas a escritura pública. Instala las reglas proporcionadas en
+firebase-database.rules.json después de dar de alta los UID autorizados.
+
+INSTALAR COMO APP
+-----------------
+- PC (Chrome/Edge): usar icono de instalación en la barra o menú > Instalar.
+- Android (Chrome): menú tres puntos > Instalar aplicación.
+- iPhone (Safari): Compartir > Añadir a pantalla de inicio.
+
+La instalación ofrece acceso tipo aplicación a la página; para ver o cambiar
+aportaciones hace falta conexión con Firebase.
+
+IDIOMA
+------
+La página queda en español de México (es-MX) y evita las sugerencias normales
+de traducción automática de Google.
+
+NOTA
+----
+En este entorno se comprobó la sintaxis del React, CSS, JavaScript y JSON. No
+fue posible efectuar una compilación completa con npm aquí porque la instalación
+de dependencias no pudo completarse; por eso se indica comprobar npm run build
+localmente ANTES de subir a producción.

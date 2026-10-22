@@ -1,0 +1,24 @@
+{
+  "rules": {
+    "ahorro": {
+      ".read": true,
+      ".write": "auth !== null && root.child('adminUids').child(auth.uid).val() === true",
+      "semana": {
+        ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() % 1 === 0"
+      },
+      "integrantes": {
+        "$integrante": {
+          "pagos": {
+            ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() % 1 === 0"
+          }
+        }
+      }
+    },
+    "adminUids": {
+      "$uid": {
+        ".read": "auth !== null && auth.uid === $uid",
+        ".write": false
+      }
+    }
+  }
+}
