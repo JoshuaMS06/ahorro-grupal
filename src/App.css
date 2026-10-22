@@ -232,3 +232,10 @@
 .install-instructions b { color:#dfccff; }
 @media(max-width:900px){ .top-nav { background:#141027; border-color:#46375e; } }
 @media(max-width:640px){ .main-content { padding-top:23px; } .welcome-row { flex-direction:row; margin-bottom:16px; } }
+
+/* Diagnóstico de UID, visible solamente tras intentar iniciar sesión administrativa */
+.uid-debug{margin:14px 0 8px;padding:14px;border:1px solid #694a9f;border-radius:14px;background:rgba(116,67,178,.13);display:flex;flex-direction:column;gap:8px;color:#e7dafe;overflow-wrap:anywhere}
+.uid-debug span{font-size:12px;font-weight:700;color:#c6b5e9}
+.uid-debug code{display:block;font-size:12px;user-select:all;padding:9px;background:#1d1530;border-radius:8px;overflow-wrap:anywhere;color:#fff}
+.uid-debug button{align-self:flex-start;display:inline-flex;align-items:center;gap:7px;padding:8px 12px;border:1px solid #8b68c4;border-radius:10px;background:#40266e;color:#fff;font-size:12px;font-weight:700}
+.uid-debug p{font-size:12px;line-height:1.5;margin:0;color:#f4d7ff}
