@@ -3,12 +3,13 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'firebase/auth';
 import { getDatabase, ref, onValue, runTransaction } from 'firebase/database';
 import {
-  ArrowDownRight, ArrowRight, ArrowUpRight, CalendarDays, CheckCheck, CheckCircle2,
+  ArrowDownRight, ArrowUpRight, CalendarDays, CheckCheck, CheckCircle2,
   CloudOff, Copy, Download, Eye, EyeOff, Filter,
   Info, LockKeyhole, LogOut, Menu, Minus, Pin, Plus, Search, ShieldCheck,
   UsersRound, Wallet, X, AlertTriangle, RotateCw,
 } from 'lucide-react';
 import './App.css';
+import { semanaActualMexico, proximoLunesMexico } from '../lib/semanaAutomatica.js';
 
 // Mantenemos el mismo proyecto y las mismas rutas de Firebase: ¡no migrar ni borrar datos!
 const firebaseConfig = {
@@ -121,7 +122,9 @@ async function permisoDesdeServidor(cuenta) {
 
 export default function App() {
   const [integrantes, setIntegrantes] = useState({});
-  const [semana, setSemana] = useState(1);
+  // El calendario mexicano, no un incremento manual, determina la semana.
+  const [semana, setSemana] = useState(() => semanaActualMexico());
+  const [semanaGuardada, setSemanaGuardada] = useState(null);
   const [cargando, setCargando] = useState(true);
   const [datosInicializados, setDatosInicializados] = useState(false);
   const [dbError, setDbError] = useState('');
@@ -143,7 +146,6 @@ export default function App() {
   const [revisandoPermiso, setRevisandoPermiso] = useState(false);
   const [operacion, setOperacion] = useState('');
   const [mensaje, setMensaje] = useState('');
-  const [confirmarSemana, setConfirmarSemana] = useState(false);
   const [installEvent, setInstallEvent] = useState(null);
   const [installOpen, setInstallOpen] = useState(false);
   const [instalada, setInstalada] = useState(() => window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true);
@@ -155,7 +157,7 @@ export default function App() {
       const data = snapshot.val();
       setDatosInicializados(Boolean(data?.integrantes));
       setIntegrantes(data?.integrantes || {});
-      setSemana(Math.max(1, Number(data?.semana) || 1));
+      setSemanaGuardada(Number.isInteger(Number(data?.semana)) ? Number(data?.semana) : null);
       setDbError('');
       setCargando(false);
     }, (error) => {
@@ -165,6 +167,42 @@ export default function App() {
     });
     return () => cancel();
   }, []);
+
+  // Siempre calculamos desde la FECHA de Ciudad de México, no desde el reloj
+  // local del dispositivo. Al abrir la app tras días cerrada, se pone al día.
+  // Mientras permanezca abierta, se actualiza en el cambio de lunes.
+  useEffect(() => {
+    const actualizar = () => setSemana(semanaActualMexico());
+    const reloj = window.setInterval(actualizar, 1000);
+    document.addEventListener('visibilitychange', actualizar);
+    window.addEventListener('focus', actualizar);
+    actualizar();
+    return () => {
+      window.clearInterval(reloj);
+      document.removeEventListener('visibilitychange', actualizar);
+      window.removeEventListener('focus', actualizar);
+    };
+  }, []);
+
+  // Si entra un administrador y el cron aún no actualizó el dato persistido,
+  // se sincroniza SOLAMENTE ahorro/semana. Nunca se modifican aportaciones.
+  // Es idempotente: múltiples pestañas no incrementan la semana dos veces.
+  useEffect(() => {
+    if (!admin || !datosInicializados || semanaGuardada === semana) return;
+    let activo = true;
+    const sincronizar = async () => {
+      try {
+        await runTransaction(ref(database, 'ahorro/semana'), (actual) => {
+          if (Number(actual) === semana) return;
+          return semana;
+        }, { applyLocally: false });
+      } catch (error) {
+        if (activo) console.error('No se pudo sincronizar la semana calendario:', error);
+      }
+    };
+    sincronizar();
+    return () => { activo = false; };
+  }, [admin, datosInicializados, semanaGuardada, semana]);
 
   // Un resultado nulo del listener no equivale a una denegación de permisos.
   // Confirmamos los datos directamente contra Firebase antes de concluir que faltan.
@@ -395,20 +433,6 @@ export default function App() {
     } finally { setOperacion(''); }
   };
 
-  const advanceWeek = async () => {
-    if (!admin || operacion) return;
-    setOperacion('semana');
-    try {
-      const result = await runTransaction(ref(database, 'ahorro/semana'), (actual) => Math.max(1, Number(actual) || 1) + 1, { applyLocally: false });
-      if (!result.committed) throw new Error('Operación no confirmada');
-      setConfirmarSemana(false);
-      setMensaje(`Ahora están en la semana ${Number(result.snapshot.val())}.`);
-    } catch (error) {
-      console.error('Error al avanzar de semana:', error);
-      setMensaje('No se pudo avanzar la semana. Revisa los permisos.');
-    } finally { setOperacion(''); }
-  };
-
   const seedMembers = async () => {
     if (!admin || datosInicializados || operacion) return;
     setOperacion('inicializar');
@@ -417,7 +441,7 @@ export default function App() {
         if (current !== null) return;
         const list = {};
         INTEGRANTES_INICIALES.forEach((name) => { list[name] = { pagos: 0 }; });
-        return { semana: 1, integrantes: list };
+        return { semana: semanaActualMexico(), integrantes: list };
       }, { applyLocally: false });
       setMensaje(result.committed ? 'Lista de integrantes creada correctamente.' : 'La lista ya existe; no se modificaron los datos.');
     } catch (error) {
@@ -461,7 +485,7 @@ export default function App() {
 
       <main className="main-content" id="inicio">
         <section className="welcome-row">
-          <div className="week-pill"><CalendarDays size={19}/><span>Semana actual</span><strong>{semana.toString().padStart(2, '0')}</strong></div>
+          <div className="week-pill" title={`Cambio automático los lunes a las 00:00, hora de Ciudad de México. Próximo: ${proximoLunesMexico()}`}><CalendarDays size={19}/><span>Semana actual</span><strong>{semana.toString().padStart(2, '0')}</strong></div>
         </section>
 
         {!online && <div className="alert-info"><CloudOff size={18}/> Estás sin conexión. Puedes abrir la app instalada, pero los datos y pagos requieren internet.</div>}
@@ -494,7 +518,7 @@ export default function App() {
           ) : <div className="empty-list"><Search size={30}/><strong>No encontramos integrantes</strong><p>{miembros.length ? 'Prueba con otro nombre o cambia el filtro.' : 'La lista aún no tiene registros.'}</p><button type="button" onClick={() => { setBusqueda(''); setFiltro('todos'); }}>Limpiar filtros</button></div>}
         </section>
 
-        {admin && <section className="admin-panel"><div className="admin-panel-copy"><span><ShieldCheck size={18}/> HERRAMIENTAS ADMINISTRATIVAS</span><h3>Gestiona el progreso del grupo</h3><p>Registra aportaciones con los botones + y − de cada integrante. Los cambios se guardan en Firebase.</p></div><div className="admin-panel-actions">{!datosInicializados && <button type="button" className="secondary-action" disabled={Boolean(operacion)} onClick={seedMembers}><Plus size={17}/> Crear lista inicial</button>}<button type="button" className="primary-action" disabled={Boolean(operacion) || !datosInicializados} onClick={() => setConfirmarSemana(true)}><CalendarDays size={18}/> Avanzar a semana {semana + 1} <ArrowRight size={17}/></button></div></section>}
+        {admin && <section className="admin-panel"><div className="admin-panel-copy"><span><ShieldCheck size={18}/> HERRAMIENTAS ADMINISTRATIVAS</span><h3>Gestiona el progreso del grupo</h3><p>Registra aportaciones con los botones + y − de cada integrante. Los cambios se guardan en Firebase.</p><p><CalendarDays size={16} style={{ verticalAlign: 'middle', marginRight: 6 }}/>Semana automática: lunes 00:00 (Ciudad de México). Próximo cambio: {proximoLunesMexico()}.</p></div><div className="admin-panel-actions">{!datosInicializados && <button type="button" className="secondary-action" disabled={Boolean(operacion)} onClick={seedMembers}><Plus size={17}/> Crear lista inicial</button>}<span className="primary-action" style={{ cursor: 'default', display: 'flex', alignItems: 'center', gap: 9 }}><CheckCircle2 size={18}/> Avance semanal automático activo</span></div></section>}
 
         <footer className="site-footer"><div className="footer-brand"><img src="/icons/icon-192.png" width="31" height="31" alt=""/><div><b>AhorroGrupal</b><small>Ingeniería Industrial</small></div></div><span>Hecho para ahorrar juntos. • {new Date().getFullYear()}</span><button type="button" onClick={installApp}><Download size={16}/> {instalada ? 'App instalada' : 'Instalar aplicación'}</button></footer>
       </main>
@@ -505,13 +529,11 @@ export default function App() {
         <div className="modal" role="dialog" aria-modal="true" aria-labelledby="admin-modal-title">
           <button type="button" className="modal-close" onClick={() => { setAdminOpen(false); setAuthError(''); }} aria-label="Cerrar"><X size={21}/></button>
           {usuario && !admin && !validandoAdmin ? <><div className="modal-icon"><ShieldCheck size={27}/></div><h2 id="admin-modal-title">Verificación de permisos</h2><p>Tu cuenta inició sesión correctamente, pero Firebase todavía no confirmó el permiso administrativo.</p><div className="modal-warning">No vuelvas a crear tu usuario. Comprueba el resultado de lectura que aparece abajo.</div>{uidParaAutorizar && <div className="uid-debug"><span>UID exacto de tu cuenta:</span><code>{uidParaAutorizar}</code><button type="button" onClick={copiarUid}><Copy size={15}/> Copiar UID</button>{detallePermiso && <p>{detallePermiso}</p>}</div>}<button className="modal-submit" type="button" disabled={revisandoPermiso} onClick={reintentarPermiso}><RotateCw size={17}/> {revisandoPermiso ? 'Comprobando...' : 'Volver a comprobar el permiso'}</button><button className="forgot-password" type="button" onClick={cerrarSesion}>Cerrar sesión</button></> : <>
-            <div className="modal-icon"><LockKeyhole size={26}/></div><h2 id="admin-modal-title">Acceso administrativo</h2><p>Solo las personas autorizadas pueden registrar aportaciones o avanzar semanas.</p>
+            <div className="modal-icon"><LockKeyhole size={26}/></div><h2 id="admin-modal-title">Acceso administrativo</h2><p>Solo las personas autorizadas pueden registrar aportaciones.</p>
             <form onSubmit={submitAdmin}><label htmlFor="admin-email">Correo electrónico</label><input id="admin-email" autoComplete="username" type="email" placeholder="tu-correo@ejemplo.com" required value={correo} onChange={(e) => setCorreo(e.target.value)}/><label htmlFor="admin-password">Contraseña</label><div className="password-field"><input id="admin-password" autoComplete="current-password" type={showPassword ? 'text' : 'password'} placeholder="Introduce tu contraseña" required value={contrasena} onChange={(e) => setContrasena(e.target.value)}/><button type="button" onClick={() => setShowPassword(!showPassword)} title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'} aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}>{showPassword ? <EyeOff size={19}/> : <Eye size={19}/>}</button></div>{authError && <div role="alert" className="form-error">{authError}</div>}<button disabled={authBusy || validandoAdmin} className="modal-submit" type="submit">{authBusy ? 'Verificando...' : <><ShieldCheck size={18}/> Entrar al panel</>}</button></form>{uidParaAutorizar && <div className="uid-debug"><span>UID exacto de tu cuenta:</span><code>{uidParaAutorizar}</code><button type="button" onClick={copiarUid}><Copy size={15}/> Copiar UID</button>{detallePermiso && <p>{detallePermiso}</p>}</div>}<button type="button" className="forgot-password" onClick={resetPassword} disabled={authBusy}>¿Olvidaste tu contraseña?</button>
           </>}
         </div>
       </div>}
-
-      {confirmarSemana && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setConfirmarSemana(false); }}><div className="modal" role="dialog" aria-modal="true" aria-labelledby="week-modal-title"><button type="button" className="modal-close" onClick={() => setConfirmarSemana(false)} aria-label="Cerrar"><X size={21}/></button><div className="modal-icon modal-icon-orange"><CalendarDays size={26}/></div><h2 id="week-modal-title">¿Avanzar a la semana {semana + 1}?</h2><p>La semana actual aumentará para todo el equipo. Quienes tengan aportaciones pendientes verán su adeudo actualizado. <b>Esta acción no borra pagos anteriores.</b></p><div className="confirm-actions"><button type="button" className="secondary-action" onClick={() => setConfirmarSemana(false)}>Cancelar</button><button type="button" className="modal-submit" disabled={Boolean(operacion)} onClick={advanceWeek}>{operacion ? 'Guardando...' : `Confirmar semana ${semana + 1}`}</button></div></div></div>}
 
       {installOpen && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setInstallOpen(false); }}><div className="modal install-modal" role="dialog" aria-modal="true" aria-labelledby="install-title"><button type="button" className="modal-close" onClick={() => setInstallOpen(false)} aria-label="Cerrar"><X size={21}/></button><img className="install-logo" src="/icons/icon-192.png" alt="Logotipo Ahorro Grupal"/><h2 id="install-title">Tu ahorro, siempre a la mano</h2><p>Instala Ahorro Grupal para abrirlo como una aplicación, sin buscar la dirección cada vez.</p>{instalada ? <div className="modal-warning">La aplicación ya está instalada en este dispositivo.</div> : <div className="install-instructions"><div><b>Android y computadora</b><span>En Chrome o Edge, usa el ícono de instalación en la barra de direcciones o el menú ⋮ → Instalar aplicación.</span></div><div><b>iPhone o iPad</b><span>Abre en Safari, toca Compartir y elige «Añadir a pantalla de inicio».</span></div></div>}{installEvent && !instalada && <button className="modal-submit" type="button" onClick={async () => { setInstallOpen(false); await installApp(); }}><Download size={18}/> Instalar ahora</button>}<small className="install-disclaimer">Requiere conexión para sincronizar aportaciones con Firebase.</small></div></div>}
     </div>

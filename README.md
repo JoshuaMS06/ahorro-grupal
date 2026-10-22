@@ -1,5 +1,15 @@
 # Ahorro Grupal — versión renovada 🐷
 
+## NUEVO — SEMANAS AUTOMÁTICAS (22 de octubre de 2026)
+
+**Lee primero `SEMANA_AUTOMATICA_LEEME_PRIMERO.txt`.** La semana 4 inicia el lunes 19 de octubre de 2026; desde el lunes 26 a las **00:00 (America/Mexico_City)** la aplicación mostrará semana 5, luego semana 6 el 2 de noviembre y así sucesivamente. La interfaz cambia sin acciones del administrador y sin modificar los pagos.
+
+En Vercel se añadió un cron semanal (`0 6 * * 1`, UTC) para guardar el número en `ahorro/semana` aun cuando nadie abra la app. **Debes agregar en Vercel las variables secretas `CRON_SECRET` y `FIREBASE_SERVICE_ACCOUNT_JSON`** para que funcione la sincronización desatendida. Sin estas variables, el calendario visual sigue funcionando y un administrador autenticado puede sincronizar Firebase al entrar. El plan Hobby no garantiza exactitud horaria del cron (puede ejecutarse dentro de la hora).
+
+El botón manual de avanzar semana se retiró para prevenir dobles incrementos. El diseño morado, el cerdito, Firebase Auth y todas las aportaciones se mantienen.
+
+---
+
 PWA responsive en **React + Vite**, con **Firebase Realtime Database** y **Firebase Authentication**.
 Se conservan el proyecto Firebase `ahorro-grupal-industrial` y las rutas originales `ahorro/semana` y `ahorro/integrantes/<nombre>/pagos`. **El código no elimina ni reinicia pagos existentes**.
 

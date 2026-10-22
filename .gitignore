@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Llaves privadas / secretos: nunca subir a GitHub
+.env
+.env.*
+!*.example
+*firebase-adminsdk*.json
+*service-account*.json
+*service_account*.json

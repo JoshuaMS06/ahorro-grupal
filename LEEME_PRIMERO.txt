@@ -1,3 +1,6 @@
+IMPORTANTE: Para el avance automático por calendario, primero abre SEMANA_AUTOMATICA_LEEME_PRIMERO.txt.
+Este archivo anterior contiene otras instrucciones de instalación.
+
 CAMBIOS VISUALES 22 OCT 2026
 Tema morado/oscuro; eliminados mensajes promocionales y «Sincronizado con Firebase»; texto «$20 por semana».
 Cerdito conservado con fondo morado; manifest/tema PWA actualizados.
