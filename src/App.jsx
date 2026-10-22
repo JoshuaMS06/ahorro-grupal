@@ -98,6 +98,27 @@ function MemberCard({ name, pagos, semana, pinned, onPin, isAdmin, onPayment, bu
   );
 }
 
+// Verificación independiente frente al servidor oficial de Realtime Database.
+// El token se envía ÚNICAMENTE a la URL del proyecto Firebase configurado.
+// No se almacena, no se muestra en pantalla ni se registra en consola.
+async function permisoDesdeServidor(cuenta) {
+  const token = await cuenta.getIdToken(true);
+  const url = new URL(`${firebaseConfig.databaseURL}/adminUids/${encodeURIComponent(cuenta.uid)}.json`);
+  url.searchParams.set('auth', token);
+  const response = await fetch(url.toString(), { method: 'GET', cache: 'no-store' });
+  let value;
+  try {
+    value = await response.json();
+  } catch {
+    throw new Error(`Firebase respondió HTTP ${response.status} sin JSON válido.`);
+  }
+  if (!response.ok) {
+    const reason = typeof value?.error === 'string' ? value.error : `HTTP ${response.status}`;
+    throw new Error(`El servidor rechazó la lectura (${reason}).`);
+  }
+  return value;
+}
+
 export default function App() {
   const [integrantes, setIntegrantes] = useState({});
   const [semana, setSemana] = useState(1);
@@ -145,16 +166,30 @@ export default function App() {
     return () => cancel();
   }, []);
 
-  // Escucha el permiso en tiempo real. No cerramos la sesión por un primer
-  // resultado vacío: Firebase puede estar terminando de sincronizar el token.
-  // El backend sigue siendo el único que decide si se autorizan escrituras.
+  // Un resultado nulo del listener no equivale a una denegación de permisos.
+  // Confirmamos los datos directamente contra Firebase antes de concluir que faltan.
+  // La comprobación REST oficial está autenticada con el token real de este usuario.
+  // Las reglas de RTDB siguen siendo la autoridad para autorizar escrituras.
   useEffect(() => {
     let activo = true;
     let cancelarLectura = () => {};
     let uidEnEscucha = '';
+    let intento = 0;
+
+    const permitirAcceso = () => {
+      setAdmin(true);
+      setValidandoAdmin(false);
+      setAuthError('');
+      setUidParaAutorizar('');
+      setDetallePermiso('');
+      setAdminOpen(false);
+      setContrasena('');
+    };
+
     const cancelarAuth = onAuthStateChanged(auth, (cuenta) => {
       cancelarLectura();
       cancelarLectura = () => {};
+      const version = ++intento;
       uidEnEscucha = cuenta?.uid || '';
       setUsuario(cuenta);
       setAdmin(false);
@@ -165,48 +200,67 @@ export default function App() {
         setAuthError('');
         return;
       }
+
       const uid = cuenta.uid;
       const rutaPermiso = `adminUids/${uid}`;
-      cancelarLectura = onValue(
-        ref(database, rutaPermiso),
-        (snapshot) => {
-          if (!activo || uidEnEscucha !== uid) return;
-          const valor = snapshot.val();
-          const autorizado = valor === true;
-          setAdmin(autorizado);
+      const procesarLectura = (snapshot) => {
+        if (!activo || uidEnEscucha !== uid) return;
+        const lectura = ++intento;
+        const valor = snapshot.val();
+        if (valor === true) {
+          permitirAcceso();
+          return;
+        }
+        setAdmin(false);
+        setUidParaAutorizar(uid);
+        if (valor !== null) {
           setValidandoAdmin(false);
-          if (autorizado) {
-            setAuthError('');
-            setUidParaAutorizar('');
-            setDetallePermiso('');
-            setAdminOpen(false);
-            setContrasena('');
-          } else {
-            setUidParaAutorizar(uid);
-            setAuthError('La cuenta inició sesión, pero el permiso de administración todavía no fue confirmado.');
-            if (valor === null) {
-              setDetallePermiso(`La consulta en vivo devolvió null en /${rutaPermiso}. Esto puede indicar un UID diferente en los datos o un problema de sincronización. La base consultada es ${firebaseConfig.databaseURL}.`);
-            } else if (typeof valor === 'string') {
-              setDetallePermiso(`Firebase respondió con un texto: ${JSON.stringify(valor)}. Debe ser true de tipo Boolean, sin comillas.`);
-            } else {
-              setDetallePermiso(`Firebase respondió con un valor de tipo ${typeof valor}: ${JSON.stringify(valor)}. El permiso requiere exactamente true (Boolean).`);
-            }
+          setAuthError('El permiso existe, pero no tiene el valor Boolean true.');
+          setDetallePermiso(`La lectura de /${rutaPermiso} devolvió ${JSON.stringify(valor)} (${typeof valor}). Debe ser true, sin comillas.`);
+          return;
+        }
+
+        setValidandoAdmin(true);
+        setAuthError('Comprobando autorización directamente con Firebase…');
+        setDetallePermiso('El listener devolvió null. Verificando el dato directamente en el servidor de Firebase…');
+        permisoDesdeServidor(cuenta).then((respuesta) => {
+          if (!activo || uidEnEscucha !== uid || lectura !== intento) return;
+          if (respuesta === true) {
+            permitirAcceso();
+            return;
           }
-        },
-        (error) => {
-          if (!activo || uidEnEscucha !== uid) return;
-          console.error('Error de lectura del permiso administrativo:', error);
-          setValidandoAdmin(false);
           setAdmin(false);
-          setUidParaAutorizar(uid);
-          setAuthError('Firebase no permitió consultar el permiso administrativo.');
-          setDetallePermiso(`La lectura de /${rutaPermiso} falló: ${error?.code || error?.message || 'error desconocido'}. Revisa reglas y conexión; no desactives la seguridad.`);
-        },
-      );
+          setValidandoAdmin(false);
+          setAuthError('Tu cuenta inició sesión, pero el servidor no confirmó el permiso administrativo.');
+          if (respuesta === null) {
+            setDetallePermiso(`El listener y una consulta HTTPS autenticada devolvieron null para /${rutaPermiso} en ${firebaseConfig.databaseURL}. El archivo exportado contiene true, así que hay que comprobar el nombre exacto de la clave y el proyecto de origen del exportado; no borres registros.`);
+          } else {
+            setDetallePermiso(`La consulta HTTPS autenticada devolvió ${JSON.stringify(respuesta)} (${typeof respuesta}) en /${rutaPermiso}. Para administrar debe ser Boolean true.`);
+          }
+        }).catch((error) => {
+          if (!activo || uidEnEscucha !== uid || lectura !== intento) return;
+          setAdmin(false);
+          setValidandoAdmin(false);
+          setAuthError('No se pudo comprobar la autorización en el servidor.');
+          setDetallePermiso(`El listener devolvió null y la consulta HTTPS no pudo confirmarlo: ${error?.message || 'error desconocido'}. No se han cambiado permisos ni datos.`);
+        });
+      };
+      const procesarError = (error) => {
+        if (!activo || uidEnEscucha !== uid || version > intento) return;
+        ++intento;
+        setValidandoAdmin(false);
+        setAdmin(false);
+        setUidParaAutorizar(uid);
+        setAuthError('Firebase no permitió consultar el permiso administrativo.');
+        setDetallePermiso(`La lectura de /${rutaPermiso} falló: ${error?.code || error?.message || 'error desconocido'}. Comprueba que las reglas estén publicadas.`);
+      };
+      cancelarLectura = onValue(ref(database, rutaPermiso), procesarLectura, procesarError);
     });
+
     return () => {
       activo = false;
       uidEnEscucha = '';
+      ++intento;
       cancelarLectura();
       cancelarAuth();
     };
