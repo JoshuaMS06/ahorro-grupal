@@ -1,3 +1,13 @@
+# Ahorro Grupal — Fondos Grupal y Carrera ($10 + $10)
+
+Lee primero `LEEME_FONDOS_10_10.txt`. La app separa los dos fondos en la interfaz sin migrar Firebase.
+
+**Por cada aporte semanal registrado (`pagos`):** $10 al fondo Grupal y $10 al fondo Carrera. No muestra total combinado. Se asume que esa división aplica también a las aportaciones existentes.
+
+Mantiene la PWA, la cuenta de administrador, el color morado y el avance automático de semanas de la versión anterior. La función de Vercel sigue funcionando con los secretos existentes.
+
+---
+
 # Ahorro Grupal — versión renovada 🐷
 
 ## NUEVO — SEMANAS AUTOMÁTICAS (22 de octubre de 2026)

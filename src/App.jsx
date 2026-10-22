@@ -6,10 +6,11 @@ import {
   ArrowDownRight, ArrowUpRight, CalendarDays, CheckCheck, CheckCircle2,
   CloudOff, Copy, Download, Eye, EyeOff, Filter,
   Info, LockKeyhole, LogOut, Menu, Minus, Pin, Plus, Search, ShieldCheck,
-  UsersRound, Wallet, X, AlertTriangle, RotateCw,
+  UsersRound, Wallet, GraduationCap, X, AlertTriangle, RotateCw,
 } from 'lucide-react';
 import './App.css';
 import { semanaActualMexico, proximoLunesMexico } from '../lib/semanaAutomatica.js';
+import { CUOTA_GRUPAL, CUOTA_CARRERA, calcularResumenFondos, montosIntegrante } from '../lib/fondos.js';
 
 // Mantenemos el mismo proyecto y las mismas rutas de Firebase: ¡no migrar ni borrar datos!
 const firebaseConfig = {
@@ -26,7 +27,6 @@ const firebaseConfig = {
 const firebaseApp = getApps().length ? getApp() : initializeApp(firebaseConfig);
 const database = getDatabase(firebaseApp);
 const auth = getAuth(firebaseApp);
-const CUOTA = 20;
 const INTEGRANTES_INICIALES = [
   'Alan Patiño', 'Sergio Emilio', 'Eduardo Benitez', 'Joshua Moreno', 'Lilia Belén',
   'Ana María', 'Jose Alberto', 'Camila Aimee', 'Jesús Eduardo', 'Brisa Yavhe',
@@ -66,9 +66,33 @@ function Metric({ icon: Icon, label, value, sub, tone = 'purple' }) {
   );
 }
 
+function BalanceFund({ tipo, etiqueta, icon: Icon, total, esperado, pendiente, porcentaje, semana, cargando }) {
+  const nombre = tipo === 'grupal' ? 'Fondo grupal' : 'Fondo de carrera';
+  return (
+    <article className={`main-balance fund-balance fund-balance-${tipo}`} aria-label={nombre}>
+      <div className="balance-decor one"/><div className="balance-decor two"/>
+      <div className="balance-inner">
+        <div className="balance-top"><span className="balance-tag"><Icon size={17}/> {nombre}</span></div>
+        <div className="balance-body">
+          <p>{etiqueta}</p>
+          <h2>{cargando ? '—' : currency(total)}</h2>
+          <span>$10 por semana · por integrante</span>
+        </div>
+        <div className="balance-bottom">
+          <div className="balance-progress-heading"><span>Progreso del fondo</span><strong>{porcentaje}%</strong></div>
+          <div className="balance-track"><span style={{ width: `${porcentaje}%` }}/></div>
+          <div className="balance-foot"><span>Meta: {cargando ? '—' : currency(esperado)}</span><span>Semana {semana}</span></div>
+          <div className="fund-pending">Por recaudar en {tipo === 'grupal' ? 'Grupal' : 'Carrera'}: <strong>{cargando ? '—' : currency(pendiente)}</strong></div>
+        </div>
+        {tipo === 'grupal' ? <div className="hero-coin" aria-hidden="true"><img src="/icons/icon-512.png" alt=""/></div>
+          : <div className="fund-illustration" aria-hidden="true"><GraduationCap size={112}/></div>}
+      </div>
+    </article>
+  );
+}
+
 function MemberCard({ name, pagos, semana, pinned, onPin, isAdmin, onPayment, busy }) {
-  const pagados = Math.max(0, Number(pagos) || 0);
-  const pendiente = Math.max(0, semana - pagados);
+  const { pagados, pendiente, grupal, carrera, grupalPendiente, carreraPendiente } = montosIntegrante(pagos, semana);
   const alDia = pendiente === 0;
   const porcentaje = semana > 0 ? Math.min(100, Math.round((pagados / semana) * 100)) : 100;
   return (
@@ -76,14 +100,18 @@ function MemberCard({ name, pagos, semana, pinned, onPin, isAdmin, onPayment, bu
       <div className="member-avatar" aria-hidden="true">{initials(name)}</div>
       <div className="member-info">
         <div className="member-name-row"><h3 title={name}>{name}</h3>{pinned && <span className="favorite-label">Mi perfil</span>}</div>
-        <div className="member-meta"><span>{pagados} {pagados === 1 ? 'aportación' : 'aportaciones'}</span><span className="dot"/><span>{currency(pagados * CUOTA)} ahorrados</span></div>
+        <div className="member-meta"><span>{pagados} {pagados === 1 ? 'aportación' : 'aportaciones'}</span></div>
+        <div className="member-funds" aria-label={`Fondos de ${name}`}>
+          <span className="member-fund member-fund-grupal">Grupal: <strong>{currency(grupal)}</strong></span>
+          <span className="member-fund member-fund-carrera">Carrera: <strong>{currency(carrera)}</strong></span>
+        </div>
         <div className="member-progress" aria-label={`${porcentaje}% de semanas cubiertas`}><span style={{ width: `${porcentaje}%` }}/></div>
       </div>
       <div className="member-state">
         <span className={`status ${alDia ? 'status-ok' : 'status-debt'}`}>
-          {alDia ? <><CheckCircle2 size={15}/> Al corriente</> : <>Pendiente {currency(pendiente * CUOTA)}</>}
+          {alDia ? <><CheckCircle2 size={15}/> Al corriente</> : <>{pendiente} {pendiente === 1 ? 'semana pendiente' : 'semanas pendientes'}</>}
         </span>
-        <span className="status-detail">{alDia ? 'Sin adeudos' : `${pendiente} ${pendiente === 1 ? 'semana' : 'semanas'} pendiente${pendiente === 1 ? '' : 's'}`}</span>
+        <span className="status-detail">{alDia ? 'Sin adeudos' : <>Grupal: {currency(grupalPendiente)}<br/>Carrera: {currency(carreraPendiente)}</>}</span>
       </div>
       <div className="member-actions">
         <button type="button" className={`icon-button pin-button ${pinned ? 'is-pinned' : ''}`} onClick={() => onPin(name)}
@@ -91,8 +119,8 @@ function MemberCard({ name, pagos, semana, pinned, onPin, isAdmin, onPayment, bu
           <Pin size={18} fill={pinned ? 'currentColor' : 'none'}/>
         </button>
         {isAdmin && <div className="payment-actions" aria-label={`Administrar aportaciones de ${name}`}>
-          <button type="button" className="payment-minus" disabled={busy || pagados <= 0} onClick={() => onPayment(name, -1)} title="Quitar una aportación" aria-label={`Quitar una aportación a ${name}`}><Minus size={17}/></button>
-          <button type="button" className="payment-plus" disabled={busy} onClick={() => onPayment(name, 1)} title="Registrar una aportación" aria-label={`Registrar una aportación de ${name}`}><Plus size={18}/></button>
+          <button type="button" className="payment-minus" disabled={busy || pagados <= 0} onClick={() => onPayment(name, -1)} title="Retirar una aportación semanal: $10 Grupal y $10 Carrera" aria-label={`Quitar aportación semanal de ${name} de ambos fondos`}><Minus size={17}/></button>
+          <button type="button" className="payment-plus" disabled={busy} onClick={() => onPayment(name, 1)} title="Registrar una aportación semanal: $10 Grupal y $10 Carrera" aria-label={`Registrar aportación semanal de ${name} en ambos fondos`}><Plus size={18}/></button>
         </div>}
       </div>
     </article>
@@ -329,13 +357,7 @@ export default function App() {
   const miembros = useMemo(() => Object.entries(integrantes).map(([name, data]) => ({
     name, pagos: Math.max(0, Number(data?.pagos) || 0),
   })).sort((a, b) => a.name.localeCompare(b.name, 'es')), [integrantes]);
-  const stats = useMemo(() => {
-    const total = miembros.reduce((sum, item) => sum + item.pagos * CUOTA, 0);
-    const esperado = miembros.length * semana * CUOTA;
-    const pendiente = miembros.reduce((sum, item) => sum + Math.max(0, semana - item.pagos) * CUOTA, 0);
-    const alDia = miembros.filter((m) => m.pagos >= semana).length;
-    return { total, esperado, pendiente, alDia, faltantes: miembros.length - alDia, porcentaje: esperado > 0 ? Math.min(100, Math.round(total / esperado * 100)) : 0 };
-  }, [miembros, semana]);
+  const stats = useMemo(() => calcularResumenFondos(miembros, semana), [miembros, semana]);
   const miembrosVisibles = useMemo(() => miembros
     .filter((m) => m.name.toLocaleLowerCase('es-MX').includes(busqueda.trim().toLocaleLowerCase('es-MX')))
     .filter((m) => filtro === 'todos' || (filtro === 'al-dia' ? m.pagos >= semana : m.pagos < semana))
@@ -426,7 +448,7 @@ export default function App() {
         return Math.max(0, actual + amount);
       }, { applyLocally: false });
       if (!result.committed) throw new Error('Operación no confirmada');
-      setMensaje(`Aportación ${amount > 0 ? 'registrada' : 'retirada'} para ${name}.`);
+      setMensaje(`Aportación ${amount > 0 ? 'registrada' : 'retirada'} para ${name}: ${currency(CUOTA_GRUPAL)} Grupal y ${currency(CUOTA_CARRERA)} Carrera.`);
     } catch (error) {
       console.error('Error al actualizar el pago:', error);
       setMensaje('No se pudo guardar el pago. Verifica tus permisos de Firebase.');
@@ -492,22 +514,21 @@ export default function App() {
         {dbError && <div className="alert-error"><AlertTriangle size={18}/> {dbError}</div>}
         {!cargando && !datosInicializados && !dbError && <div className="alert-info"><Info size={18}/> Todavía no existe la lista de aportaciones en Firebase. {admin ? 'Puedes crearla con el botón que aparece abajo.' : 'Un administrador debe prepararla.'}</div>}
 
-        <section className="dashboard-grid" aria-label="Resumen de ahorro">
-          <div className="main-balance">
-            <div className="balance-decor one"/><div className="balance-decor two"/>
-            <div className="balance-inner">
-              <div className="balance-top"><span className="balance-tag"><Wallet size={17}/> Fondo grupal</span></div>
-              <div className="balance-body"><p>AHORRO TOTAL ACUMULADO</p><h2>{cargando ? '—' : currency(stats.total)}</h2><span>$20 por semana</span></div>
-              <div className="balance-bottom"><div className="balance-progress-heading"><span>Progreso de aportaciones</span><strong>{stats.porcentaje}%</strong></div><div className="balance-track"><span style={{ width: `${stats.porcentaje}%` }}/></div><div className="balance-foot"><span>Meta semanal acumulada: {currency(stats.esperado)}</span><span>Semana {semana}</span></div></div>
-              <div className="hero-coin" aria-hidden="true"><img src="/icons/icon-512.png" alt=""/></div>
-            </div>
-          </div>
+        <section className="dashboard-grid split-dashboard" aria-label="Totales independientes de los dos fondos">
+          <BalanceFund tipo="grupal" etiqueta="TOTAL AHORRO GRUPAL" icon={Wallet}
+            total={stats.grupal.total} esperado={stats.grupal.esperado} pendiente={stats.grupal.pendiente}
+            porcentaje={stats.porcentaje} semana={semana} cargando={cargando}/>
+          <BalanceFund tipo="carrera" etiqueta="TOTAL AHORRO CARRERA" icon={GraduationCap}
+            total={stats.carrera.total} esperado={stats.carrera.esperado} pendiente={stats.carrera.pendiente}
+            porcentaje={stats.porcentaje} semana={semana} cargando={cargando}/>
           <div className="metrics-row">
-            <Metric icon={UsersRound} label="Integrantes" value={cargando ? '—' : miembros.length} sub="Personas que forman el ahorro" tone="blue"/>
-            <Metric icon={CheckCheck} label="Al corriente" value={cargando ? '—' : stats.alDia} sub="Integrantes sin pagos pendientes" tone="purple"/>
-            <Metric icon={ArrowDownRight} label="Por recaudar" value={cargando ? '—' : currency(stats.pendiente)} sub="Aportaciones pendientes hasta hoy" tone="orange"/>
+            <Metric icon={UsersRound} label="Integrantes" value={cargando ? '—' : miembros.length} sub="Personas del grupo" tone="blue"/>
+            <Metric icon={CheckCheck} label="Al corriente" value={cargando ? '—' : stats.alDia} sub="Semanas cubiertas" tone="purple"/>
+            <Metric icon={ArrowDownRight} label="Pendiente grupal" value={cargando ? '—' : currency(stats.grupal.pendiente)} sub="$10 por semana no aportada" tone="purple"/>
+            <Metric icon={ArrowDownRight} label="Pendiente carrera" value={cargando ? '—' : currency(stats.carrera.pendiente)} sub="$10 por semana no aportada" tone="blue"/>
           </div>
         </section>
+        <p className="split-explanation">Cada aportación semanal registrada se distribuye en <strong>{currency(CUOTA_GRUPAL)} Grupal</strong> y <strong>{currency(CUOTA_CARRERA)} Carrera</strong>. Los fondos se muestran por separado.</p>
 
         <section className="members-section" id="integrantes">
           <div className="section-heading"><div><p className="eyebrow">NUESTRO EQUIPO</p><h2>Estado de aportaciones <span className="count-circle">{miembros.length}</span></h2><p>Consulta tu progreso o encuentra a cualquier integrante.</p></div>{admin && <div className="admin-badge"><ShieldCheck size={16}/> Modo administrador</div>}</div>
@@ -518,7 +539,7 @@ export default function App() {
           ) : <div className="empty-list"><Search size={30}/><strong>No encontramos integrantes</strong><p>{miembros.length ? 'Prueba con otro nombre o cambia el filtro.' : 'La lista aún no tiene registros.'}</p><button type="button" onClick={() => { setBusqueda(''); setFiltro('todos'); }}>Limpiar filtros</button></div>}
         </section>
 
-        {admin && <section className="admin-panel"><div className="admin-panel-copy"><span><ShieldCheck size={18}/> HERRAMIENTAS ADMINISTRATIVAS</span><h3>Gestiona el progreso del grupo</h3><p>Registra aportaciones con los botones + y − de cada integrante. Los cambios se guardan en Firebase.</p><p><CalendarDays size={16} style={{ verticalAlign: 'middle', marginRight: 6 }}/>Semana automática: lunes 00:00 (Ciudad de México). Próximo cambio: {proximoLunesMexico()}.</p></div><div className="admin-panel-actions">{!datosInicializados && <button type="button" className="secondary-action" disabled={Boolean(operacion)} onClick={seedMembers}><Plus size={17}/> Crear lista inicial</button>}<span className="primary-action" style={{ cursor: 'default', display: 'flex', alignItems: 'center', gap: 9 }}><CheckCircle2 size={18}/> Avance semanal automático activo</span></div></section>}
+        {admin && <section className="admin-panel"><div className="admin-panel-copy"><span><ShieldCheck size={18}/> HERRAMIENTAS ADMINISTRATIVAS</span><h3>Gestiona el progreso del grupo</h3><p>Cada botón + registra $10 en Grupal y $10 en Carrera; el botón − retira esas mismas dos partes. Los registros se guardan en Firebase.</p><p><CalendarDays size={16} style={{ verticalAlign: 'middle', marginRight: 6 }}/>Semana automática: lunes 00:00 (Ciudad de México). Próximo cambio: {proximoLunesMexico()}.</p></div><div className="admin-panel-actions">{!datosInicializados && <button type="button" className="secondary-action" disabled={Boolean(operacion)} onClick={seedMembers}><Plus size={17}/> Crear lista inicial</button>}<span className="primary-action" style={{ cursor: 'default', display: 'flex', alignItems: 'center', gap: 9 }}><CheckCircle2 size={18}/> Avance semanal automático activo</span></div></section>}
 
         <footer className="site-footer"><div className="footer-brand"><img src="/icons/icon-192.png" width="31" height="31" alt=""/><div><b>AhorroGrupal</b><small>Ingeniería Industrial</small></div></div><span>Hecho para ahorrar juntos. • {new Date().getFullYear()}</span><button type="button" onClick={installApp}><Download size={16}/> {instalada ? 'App instalada' : 'Instalar aplicación'}</button></footer>
       </main>

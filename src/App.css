@@ -239,3 +239,57 @@
 .uid-debug code{display:block;font-size:12px;user-select:all;padding:9px;background:#1d1530;border-radius:8px;overflow-wrap:anywhere;color:#fff}
 .uid-debug button{align-self:flex-start;display:inline-flex;align-items:center;gap:7px;padding:8px 12px;border:1px solid #8b68c4;border-radius:10px;background:#40266e;color:#fff;font-size:12px;font-weight:700}
 .uid-debug p{font-size:12px;line-height:1.5;margin:0;color:#f4d7ff}
+
+
+/* División contable: los dos fondos son independientes, sin total combinado. */
+.dashboard-grid.split-dashboard{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:stretch}
+.split-dashboard .fund-balance{min-width:0;min-height:310px}
+.split-dashboard .fund-balance-carrera{background:linear-gradient(125deg,#342459 0%,#312159 47%,#1d1740 100%);border-color:#67549f;box-shadow:0 18px 38px #08041666}
+.split-dashboard .fund-balance-grupal{background:linear-gradient(120deg,#622db1 0%,#48228c 48%,#261445 100%)}
+.split-dashboard .balance-inner{min-height:310px;padding:25px 26px 24px}
+.split-dashboard .balance-body{margin-top:24px;margin-bottom:18px}
+.split-dashboard .balance-body h2{font-size:clamp(36px,4vw,53px);letter-spacing:-1.2px}
+.split-dashboard .balance-bottom{width:100%;padding-right:7px}
+.split-dashboard .fund-balance .hero-coin{bottom:68px;right:-21px;width:137px;height:137px;opacity:.19}
+.fund-illustration{position:absolute;right:14px;bottom:65px;opacity:.12;color:#d3b6ff;transform:rotate(-10deg);pointer-events:none}
+.fund-pending{margin-top:12px;padding-top:10px;border-top:1px solid #ffffff20;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:11px;color:#e5d7f8}
+.fund-pending strong{color:#fff;font-size:12px}
+.split-dashboard .metrics-row{grid-column:1/-1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:auto;gap:14px}
+.split-dashboard .metric,.split-dashboard .metric:nth-child(1){grid-row:auto;display:block;min-width:0;padding:18px}
+.split-dashboard .metric .metric-value,.split-dashboard .metric:nth-child(1) .metric-value{font-size:clamp(22px,2.5vw,32px);margin:10px 0 3px}
+.split-explanation{color:#aaa0c2;font-size:12px;line-height:1.65;margin:13px 3px 44px}
+.split-explanation strong{color:#d6c3ff}
+.member-funds{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin:5px 0 10px}
+.member-fund{display:inline-flex;gap:5px;align-items:center;border-radius:8px;font-size:10px;padding:4px 7px;white-space:nowrap}
+.member-fund strong{font-size:11px}
+.member-fund-grupal{color:#e1cfff;background:#50357255;border:1px solid #60458c75}
+.member-fund-carrera{color:#cad7ff;background:#292d595e;border:1px solid #5e55906b}
+.member-state .status-detail{line-height:1.65}
+@media(max-width:900px){
+  .dashboard-grid.split-dashboard{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .split-dashboard .metrics-row{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .split-dashboard .fund-balance,.split-dashboard .balance-inner{min-height:292px}
+  .split-dashboard .balance-inner{padding:22px}
+  .split-dashboard .balance-body h2{font-size:clamp(30px,5vw,44px)}
+}
+@media(max-width:640px){
+  .dashboard-grid.split-dashboard{grid-template-columns:1fr;gap:12px}
+  .split-dashboard .fund-balance,.split-dashboard .balance-inner{min-height:242px}
+  .split-dashboard .balance-inner{padding:19px 19px 17px}
+  .split-dashboard .balance-body{margin:17px 0 16px}
+  .split-dashboard .balance-body h2{font-size:39px}
+  .split-dashboard .balance-body>span{font-size:12px}
+  .split-dashboard .metrics-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .split-dashboard .metric,.split-dashboard .metric:nth-child(1){padding:15px 13px}
+  .split-dashboard .metric .metric-value,.split-dashboard .metric:nth-child(1) .metric-value{font-size:24px}
+  .fund-illustration{right:0;bottom:43px}
+  .split-dashboard .fund-balance .hero-coin{bottom:44px}
+  .split-explanation{margin-bottom:36px;font-size:11px}
+  .member-funds{gap:5px;margin:4px 0 10px}
+  .member-fund{padding:3px 6px;font-size:9px}
+  .member-fund strong{font-size:10px}
+}
+@media(max-width:375px){
+  .split-dashboard .metric .metric-value,.split-dashboard .metric:nth-child(1) .metric-value{font-size:20px}
+  .split-dashboard .balance-body h2{font-size:36px}
+}
