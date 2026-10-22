@@ -4,9 +4,9 @@ import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, sendP
 import { getDatabase, ref, onValue, get, runTransaction } from 'firebase/database';
 import {
   ArrowDownRight, ArrowRight, ArrowUpRight, CalendarDays, CheckCheck, CheckCircle2,
-  CloudOff, Download, Eye, EyeOff, Filter, HeartHandshake,
-  Info, LockKeyhole, LogOut, Menu, Minus, Pin, Plus, Search, ShieldCheck, Sparkles,
-  TrendingUp, UsersRound, Wallet, X, AlertTriangle, RotateCw,
+  CloudOff, Download, Eye, EyeOff, Filter,
+  Info, LockKeyhole, LogOut, Menu, Minus, Pin, Plus, Search, ShieldCheck,
+  UsersRound, Wallet, X, AlertTriangle, RotateCw,
 } from 'lucide-react';
 import './App.css';
 
@@ -54,7 +54,7 @@ function friendlyAuthError(error) {
   }
 }
 
-function Metric({ icon: Icon, label, value, sub, tone = 'green' }) {
+function Metric({ icon: Icon, label, value, sub, tone = 'purple' }) {
   return (
     <div className={`metric metric-${tone}`}>
       <div className="metric-top"><span className="metric-icon"><Icon size={19}/></span><span className="metric-spark"><ArrowUpRight size={16}/></span></div>
@@ -333,7 +333,6 @@ export default function App() {
 
       <main className="main-content" id="inicio">
         <section className="welcome-row">
-          <div><p className="eyebrow"><Sparkles size={16}/> CADA APORTACIÓN CUENTA</p><h1>Crecer juntos, <span>ahorrar mejor.</span></h1><p className="welcome-copy">Tus aportaciones, el progreso del equipo y cada semana en un solo lugar.</p></div>
           <div className="week-pill"><CalendarDays size={19}/><span>Semana actual</span><strong>{semana.toString().padStart(2, '0')}</strong></div>
         </section>
 
@@ -345,20 +344,18 @@ export default function App() {
           <div className="main-balance">
             <div className="balance-decor one"/><div className="balance-decor two"/>
             <div className="balance-inner">
-              <div className="balance-top"><span className="balance-tag"><Wallet size={17}/> Fondo grupal</span><span className="balance-updated"><span className="live-dot"/> Sincronizado con Firebase</span></div>
-              <div className="balance-body"><p>AHORRO TOTAL ACUMULADO</p><h2>{cargando ? '—' : currency(stats.total)}</h2><span>Las metas grandes empiezan con $20 por semana.</span></div>
+              <div className="balance-top"><span className="balance-tag"><Wallet size={17}/> Fondo grupal</span></div>
+              <div className="balance-body"><p>AHORRO TOTAL ACUMULADO</p><h2>{cargando ? '—' : currency(stats.total)}</h2><span>$20 por semana</span></div>
               <div className="balance-bottom"><div className="balance-progress-heading"><span>Progreso de aportaciones</span><strong>{stats.porcentaje}%</strong></div><div className="balance-track"><span style={{ width: `${stats.porcentaje}%` }}/></div><div className="balance-foot"><span>Meta semanal acumulada: {currency(stats.esperado)}</span><span>Semana {semana}</span></div></div>
               <div className="hero-coin" aria-hidden="true"><img src="/icons/icon-512.png" alt=""/></div>
             </div>
           </div>
           <div className="metrics-row">
             <Metric icon={UsersRound} label="Integrantes" value={cargando ? '—' : miembros.length} sub="Personas que forman el ahorro" tone="blue"/>
-            <Metric icon={CheckCheck} label="Al corriente" value={cargando ? '—' : stats.alDia} sub="Integrantes sin pagos pendientes" tone="green"/>
+            <Metric icon={CheckCheck} label="Al corriente" value={cargando ? '—' : stats.alDia} sub="Integrantes sin pagos pendientes" tone="purple"/>
             <Metric icon={ArrowDownRight} label="Por recaudar" value={cargando ? '—' : currency(stats.pendiente)} sub="Aportaciones pendientes hasta hoy" tone="orange"/>
           </div>
         </section>
-
-        <div className="insight-bar"><span className="insight-icon"><HeartHandshake size={19}/></span><div><strong>Un pequeño hábito, un gran resultado.</strong><p>Cada integrante aporta <b>{currency(CUOTA)} por semana</b>. Tu constancia fortalece el fondo grupal.</p></div><span className="insight-badge"><TrendingUp size={14}/> Avanzamos juntos</span></div>
 
         <section className="members-section" id="integrantes">
           <div className="section-heading"><div><p className="eyebrow">NUESTRO EQUIPO</p><h2>Estado de aportaciones <span className="count-circle">{miembros.length}</span></h2><p>Consulta tu progreso o encuentra a cualquier integrante.</p></div>{admin && <div className="admin-badge"><ShieldCheck size={16}/> Modo administrador</div>}</div>

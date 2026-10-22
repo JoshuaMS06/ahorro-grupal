@@ -1,3 +1,8 @@
+CAMBIOS VISUALES 22 OCT 2026
+Tema morado/oscuro; eliminados mensajes promocionales y «Sincronizado con Firebase»; texto «$20 por semana».
+Cerdito conservado con fondo morado; manifest/tema PWA actualizados.
+Se mantiene toda la lógica de Firebase y los datos; este ZIP no cambia la base de datos en línea.
+
 AHORRO GRUPAL — REDISEÑO COMPLETO
 =================================
 

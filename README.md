@@ -3,10 +3,19 @@
 PWA responsive en **React + Vite**, con **Firebase Realtime Database** y **Firebase Authentication**.
 Se conservan el proyecto Firebase `ahorro-grupal-industrial` y las rutas originales `ahorro/semana` y `ahorro/integrantes/<nombre>/pagos`. **El código no elimina ni reinicia pagos existentes**.
 
+## Ajustes visuales (22 de octubre de 2026)
+
+- Fondo, tarjetas y acentos en tonos morado oscuro; cerdito con fondo violeta.
+- Retirados los textos promocionales solicitados y la banda de motivación.
+- El encabezado de ahorro total ahora muestra únicamente «$20 por semana».
+- Eliminado el texto «Sincronizado con Firebase». El enlace a Firebase continúa funcionando normalmente.
+- No se cambiaron las consultas de Firebase, las credenciales, los controles de administrador ni las reglas.
+- Actualizados el color de PWA y la versión de caché para que la app instalada reciba la nueva apariencia.
+
 ## Novedades
 
-- Interfaz moderna para móviles, tabletas y escritorio, con búsquedas, filtros y perfil fijado.
-- Nuevo cerdito para favicon, pantalla de inicio, iconos instalables y marca visual.
+- Interfaz morado/oscuro para móviles, tabletas y escritorio, con búsquedas, filtros y perfil fijado.
+- Cerdito con fondo violeta para favicon, pantalla de inicio, iconos instalables y marca visual.
 - Idioma español (`es-MX`, etiquetas en español y supresión de sugerencias automáticas de traducción de Google).
 - PWA instalable en Chrome/Edge compatibles e instalable desde Safari en iOS por "Añadir a pantalla de inicio".
 - Acceso administrativo real por correo y contraseña en Firebase Authentication, autorizado por **UID** en reglas de Realtime Database.
