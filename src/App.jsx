@@ -84,7 +84,7 @@ function BalanceFund({ tipo, etiqueta, icon: Icon, total, esperado, pendiente, p
           <div className="balance-foot"><span>Meta: {cargando ? '—' : currency(esperado)}</span><span>Semana {semana}</span></div>
           <div className="fund-pending">Por recaudar en {tipo === 'grupal' ? 'Grupal' : 'Carrera'}: <strong>{cargando ? '—' : currency(pendiente)}</strong></div>
         </div>
-        {tipo === 'grupal' ? <div className="hero-coin" aria-hidden="true"><img src="/icons/icon-512.png" alt=""/></div>
+        {tipo === 'grupal' ? <div className="hero-coin" aria-hidden="true"><img src="/icons/cerdito-512.png" alt=""/></div>
           : <div className="fund-illustration" aria-hidden="true"><GraduationCap size={112}/></div>}
       </div>
     </article>
@@ -487,7 +487,7 @@ export default function App() {
       <header className="site-header">
         <div className="header-inner">
           <a className="brand" href="#inicio" aria-label="Ir al inicio de Ahorro Grupal">
-            <img src="/icons/icon-192.png" alt="" width="43" height="43"/>
+            <img src="/icons/cerdito-192.png" alt="" width="43" height="43"/>
             <span className="brand-text"><strong>Ahorro<span>Grupal</span></strong><small>INGENIERÍA INDUSTRIAL</small></span>
           </a>
           <nav className={`top-nav ${mobileMenu ? 'nav-open' : ''}`} aria-label="Navegación principal">
@@ -541,7 +541,7 @@ export default function App() {
 
         {admin && <section className="admin-panel"><div className="admin-panel-copy"><span><ShieldCheck size={18}/> HERRAMIENTAS ADMINISTRATIVAS</span><h3>Gestiona el progreso del grupo</h3><p>Cada botón + registra $10 en Grupal y $10 en Carrera; el botón − retira esas mismas dos partes. Los registros se guardan en Firebase.</p><p><CalendarDays size={16} style={{ verticalAlign: 'middle', marginRight: 6 }}/>Semana automática: lunes 00:00 (Ciudad de México). Próximo cambio: {proximoLunesMexico()}.</p></div><div className="admin-panel-actions">{!datosInicializados && <button type="button" className="secondary-action" disabled={Boolean(operacion)} onClick={seedMembers}><Plus size={17}/> Crear lista inicial</button>}<span className="primary-action" style={{ cursor: 'default', display: 'flex', alignItems: 'center', gap: 9 }}><CheckCircle2 size={18}/> Avance semanal automático activo</span></div></section>}
 
-        <footer className="site-footer"><div className="footer-brand"><img src="/icons/icon-192.png" width="31" height="31" alt=""/><div><b>AhorroGrupal</b><small>Ingeniería Industrial</small></div></div><span>Hecho para ahorrar juntos. • {new Date().getFullYear()}</span><button type="button" onClick={installApp}><Download size={16}/> {instalada ? 'App instalada' : 'Instalar aplicación'}</button></footer>
+        <footer className="site-footer"><div className="footer-brand"><img src="/icons/cerdito-192.png" width="31" height="31" alt=""/><div><b>AhorroGrupal</b><small>Ingeniería Industrial</small></div></div><span>Hecho para ahorrar juntos. • {new Date().getFullYear()}</span><button type="button" onClick={installApp}><Download size={16}/> {instalada ? 'App instalada' : 'Instalar aplicación'}</button></footer>
       </main>
 
       {mensaje && <div role="status" className="toast"><CheckCircle2 size={19}/>{mensaje}<button type="button" onClick={() => setMensaje('')} aria-label="Cerrar mensaje"><X size={15}/></button></div>}
@@ -556,7 +556,7 @@ export default function App() {
         </div>
       </div>}
 
-      {installOpen && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setInstallOpen(false); }}><div className="modal install-modal" role="dialog" aria-modal="true" aria-labelledby="install-title"><button type="button" className="modal-close" onClick={() => setInstallOpen(false)} aria-label="Cerrar"><X size={21}/></button><img className="install-logo" src="/icons/icon-192.png" alt="Logotipo Ahorro Grupal"/><h2 id="install-title">Tu ahorro, siempre a la mano</h2><p>Instala Ahorro Grupal para abrirlo como una aplicación, sin buscar la dirección cada vez.</p>{instalada ? <div className="modal-warning">La aplicación ya está instalada en este dispositivo.</div> : <div className="install-instructions"><div><b>Android y computadora</b><span>En Chrome o Edge, usa el ícono de instalación en la barra de direcciones o el menú ⋮ → Instalar aplicación.</span></div><div><b>iPhone o iPad</b><span>Abre en Safari, toca Compartir y elige «Añadir a pantalla de inicio».</span></div></div>}{installEvent && !instalada && <button className="modal-submit" type="button" onClick={async () => { setInstallOpen(false); await installApp(); }}><Download size={18}/> Instalar ahora</button>}<small className="install-disclaimer">Requiere conexión para sincronizar aportaciones con Firebase.</small></div></div>}
+      {installOpen && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setInstallOpen(false); }}><div className="modal install-modal" role="dialog" aria-modal="true" aria-labelledby="install-title"><button type="button" className="modal-close" onClick={() => setInstallOpen(false)} aria-label="Cerrar"><X size={21}/></button><img className="install-logo" src="/icons/cerdito-192.png" alt="Logotipo Ahorro Grupal"/><h2 id="install-title">Tu ahorro, siempre a la mano</h2><p>Instala Ahorro Grupal para abrirlo como una aplicación, sin buscar la dirección cada vez.</p>{instalada ? <div className="modal-warning">La aplicación ya está instalada en este dispositivo.</div> : <div className="install-instructions"><div><b>Android y computadora</b><span>En Chrome o Edge, usa el ícono de instalación en la barra de direcciones o el menú ⋮ → Instalar aplicación.</span></div><div><b>iPhone o iPad</b><span>Abre en Safari, toca Compartir y elige «Añadir a pantalla de inicio».</span></div></div>}{installEvent && !instalada && <button className="modal-submit" type="button" onClick={async () => { setInstallOpen(false); await installApp(); }}><Download size={18}/> Instalar ahora</button>}<small className="install-disclaimer">Requiere conexión para sincronizar aportaciones con Firebase.</small></div></div>}
     </div>
   );
 }

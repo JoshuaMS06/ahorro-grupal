@@ -1,6 +1,6 @@
 /* Caché del armazón PWA; nunca almacena datos de Firebase ni contraseñas. */
-const VERSION = 'ahorro-shell-v8-dos-fondos-20261022';
-const SHELL = ['/', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
+const VERSION = 'ahorro-shell-v9-cerdito-morado-20261022';
+const SHELL = ['/', '/manifest.webmanifest', '/icons/cerdito-192.png', '/icons/cerdito-512.png'];
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(VERSION).then(async (cache) => {
     await cache.addAll(SHELL);
