@@ -1,0 +1,19 @@
+AHORROGRUPAL | ORDEN NOMBRE + PRIMER APELLIDO
+
+Novedad:
+- La lista ahora se muestra por primer nombre seguido del apellido paterno.
+- Se ordena alfabéticamente por nombre visible, no por apellido.
+- Los alumnos importados con apellidos compuestos (De la Rosa, De la Cruz) se muestran correctamente.
+- Los historiales muestran el nombre breve y siguen conservando los nombres completos originales.
+- El buscador admite nombre breve, nombre original, alias y número de control, con y sin acentos.
+- Los alumnos creados manualmente mantienen el nombre en el orden en que lo escribiste.
+- NO cambia los IDs de estudiantes, pagos, retiros, ciclos, salones ni reglas de Firebase.
+
+INSTALACIÓN (mismo método de siempre):
+1. Guarda una copia de tu carpeta AppAhorro.
+2. Extrae este ZIP directamente dentro de AppAhorro y acepta reemplazar archivos.
+3. Ejecuta: npm install ; npm test ; npm run build ; npm run dev
+4. Revisa la lista del 107 y del 507 en localhost.
+5. Cuando quede bien: git add . ; git commit -m "Mostrar nombre y apellido en salones" ; git push origin main
+
+No necesitas volver a importar la lista ni cambiar Firebase.
