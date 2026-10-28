@@ -1,8 +1,10 @@
 {
   "rules": {
+    ".read": false,
+    ".write": false,
     "ahorro": {
       ".read": true,
-      ".write": "auth !== null && root.child('adminUids').child(auth.uid).val() === true",
+      ".write": "auth != null && root.child('adminUids').child(auth.uid).val() === true",
       "semana": {
         ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() % 1 === 0"
       },
@@ -16,8 +18,30 @@
     },
     "adminUids": {
       "$uid": {
-        ".read": "auth !== null && auth.uid === $uid",
+        ".read": "auth != null && auth.uid === $uid",
         ".write": false
+      }
+    },
+    "periodos": {
+      ".read": "auth != null && root.child('adminUids').child(auth.uid).val() === true",
+      ".write": "auth != null && root.child('adminUids').child(auth.uid).val() === true"
+    },
+    "aulas": {
+      ".read": "auth != null && root.child('adminUids').child(auth.uid).val() === true",
+      "$periodo": {
+        "$salon": {
+          ".write": "auth != null && root.child('adminUids').child(auth.uid).val() === true",
+          "pagos": {
+            "$registro": {
+              ".validate": "newData.hasChildren(['estudianteId','semana','monto','estado','creadoEn']) && (((($salon === '507') && newData.child('monto').val() === 20) || (($salon !== '507') && newData.child('monto').val() === 10)) || (data.exists() && newData.child('monto').val() === data.child('monto').val())) && newData.child('semana').isNumber() && newData.child('semana').val() >= 1 && (newData.child('estado').val() === 'pagado' || newData.child('estado').val() === 'anulado')"
+            }
+          },
+          "retiros": {
+            "$retiro": {
+              ".validate": "newData.hasChildren(['monto','motivo','estado','creadoEn']) && newData.child('monto').isNumber() && newData.child('monto').val() > 0 && newData.child('monto').val() <= 1000000 && (newData.child('estado').val() === 'solicitado' || newData.child('estado').val() === 'aprobado' || newData.child('estado').val() === 'rechazado')"
+            }
+          }
+        }
       }
     }
   }

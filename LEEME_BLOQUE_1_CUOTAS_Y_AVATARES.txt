@@ -1,0 +1,32 @@
+AHORROGRUPAL · BLOQUE 1 · 28 OCT 2026
+
+CAMBIOS INCLUIDOS
+- 507: $20 por semana. Otros salones: $10 por semana.
+- Nuevos pagos guardan el importe de su salón. Los pagos pasados NO se recalculan.
+- Nuevos salones/importe de lista fijan cuotaSemanal dentro de meta.
+- Avatares de estudiantes: icono genérico de persona, sin fotografías ni iniciales.
+- Mantiene diseño morado, cerdito, PWA, profesores, retiros y cron existente.
+
+NO INCLUIDO TODAVÍA (SIGUIENTES BLOQUES)
+- Responsable general y dos responsables por salón con permisos aislados.
+- Promoción académica automatizada, bajas/egresados y migración entre salones.
+
+ACTIVACIÓN
+1. Haz copia de la carpeta original y exporta un respaldo JSON de Firebase.
+2. Extrae el ZIP directamente en la carpeta de AppAhorro (conserva .git).
+3. Ejecuta npm install, npm test y npm run build.
+4. PRIMERO configura las reglas de firebase-database.rules.json en Realtime Database -> Rules.
+   El cambio de cuotas afecta reglas; si olvidas publicarlas se rechazarán los pagos de $10.
+5. Importa las listas desde Ciclos y salones si todavía aparecen 'Sin listas importadas'.
+6. Prueba la cuota en 107 y 507 antes de publicar. No cambies pagos reales para probar.
+7. Solo tras validar, git add . ; git commit -m "Cuotas por salon y avatares" ; git push origin main.
+
+SEGURIDAD
+Las reglas aún autorizan globalmente a los UID de adminUids. Los dos responsables
+por salon requieren una SEGUNDA ETAPA con reglas por ruta y cuentas individuales.
+No se han modificado las credenciales ni la base de datos en línea.
+
+NOTA
+Si existían pagos de $20 en salones distintos al 507, seguirán en el historial con
+esos importes; solo los siguientes pagos usan $10. La cuota puede guardarse en meta
+de cada salon para no alterar los montos al cambiar de ciclo.

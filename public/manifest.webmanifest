@@ -1,7 +1,7 @@
 {
   "name": "Ahorro Grupal · Ingeniería Industrial",
   "short_name": "Ahorro Grupal",
-  "description": "Consulta el ahorro del grupo y las aportaciones semanales.",
+  "description": "Control de aportaciones semanales de $20, historial y avisos por salón y ciclo escolar.",
   "lang": "es-MX",
   "start_url": "/",
   "scope": "/",

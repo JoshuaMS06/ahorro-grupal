@@ -1,0 +1,17 @@
+AHORRO GRUPAL — PUBLICACIÓN MULTISALÓN (28 OCT 2026)
+
+1. Antes de publicar: respalda Firebase y tu proyecto local.
+2. Extrae ESTE ZIP directamente en la carpeta AppAhorro conservando .git.
+3. Verifica en Firebase Realtime Database > Rules que `periodos` y `aulas` tienen .read solo con adminUids. Este ZIP incluye las reglas para cotejarlas; no se suben automáticamente.
+4. En VS Code ejecuta `npm install`, `npm test`, `npm run build`, `npm run dev`.
+5. Abre localmente: como visitante debe aparecer 'Acceso protegido', NO los nombres. Entra con un usuario de adminUids y revisa el panel de salones.
+6. Si no hay listas, entra como administrador en 'Ciclos y salones' e importa datos_importacion/salones_2026-2027-A.json. Este archivo NO se debe publicar en GitHub; .gitignore lo excluye. Importa sólo con el respaldo preparado.
+7. Verifica el 507 y sus pagos históricos; las cuotas son 107/307/707/907: $10, 507: $20. No uses pagos reales para pruebas.
+8. Sólo si todo funciona, publica: `git add .`, `git commit -m "Multisalones con acceso protegido"`, `git push origin main`. Vercel conectada a main debe publicar automáticamente.
+9. Comprueba Deployment Ready en Vercel y la web. Nunca subas claves privadas, archivos .env ni datos_importacion.
+
+LIMITACIONES DE ESTE BLOQUE:
+- Las listas y aportaciones nuevas son visibles sólo a los administradores globales autorizados.
+- Aún NO están implementadas las dos cuentas por salón ni la promoción académica automática.
+- En `ahorro` las reglas heredadas todavía permiten lectura pública de datos antiguos; definir privacidad/migración en el bloque siguiente.
+- El inicio de sesión y la lectura de Firebase deben verificarse con la cuenta real en tu navegador.

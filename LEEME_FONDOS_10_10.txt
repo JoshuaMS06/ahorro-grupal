@@ -1,42 +1,7 @@
-AHORRO GRUPAL — DIVISIÓN DE APORTACIONES 10/10
+DOCUMENTO DE UNA VERSIÓN ANTERIOR.
 
-Cada aportación semanal se reparte así:
-- $10 MXN a AHORRO GRUPAL.
-- $10 MXN a AHORRO CARRERA.
+La configuración vigente de AhorroGrupal multi-salón está en:
+- LEEME_CAMBIOS_NUEVA_VERSION.txt
+- README.md
 
-EN LA PANTALLA PRINCIPAL
-- Tarjeta de TOTAL AHORRO GRUPAL: solo aportaciones grupales.
-- Tarjeta de TOTAL AHORRO CARRERA: solo aportaciones de carrera.
-- En cada tarjeta: meta y saldo pendiente independientes.
-- En cada integrante: ahorro Grupal y ahorro Carrera por separado.
-- Los importes 'por recaudar' se desglosan en dos indicadores.
-- Ya no se muestra un total combinado de ambos fondos.
-
-IMPORTANTE SOBRE LOS PAGOS YA EXISTENTES
-La base de datos conserva los registros originales: /ahorro/integrantes/<nombre>/pagos
-Cada numero de 'pagos' ya registrado se interpreta como UNA aportación de $20,
-repartida en $10 Grupal y $10 Carrera. Es un desglose de los registros previos,
-NO un movimiento de fondos. Funciona siempre que todas las aportaciones anteriores
-se hayan pagado con esa misma distribución; si no, hará falta un historial de
-importes por fondo para recuperar las diferencias reales.
-
-OPERACIÓN ADMINISTRATIVA
-- Cada botón + agrega una semana pagada de AMBOS fondos a la vez ($10 + $10).
-- Cada botón - retira una semana pagada de AMBOS fondos a la vez.
-- No registra aportaciones parciales a un solo fondo por ahora.
-- No se modifica ningún dato de Firebase, reglas, permisos ni secretos.
-- Mantiene el cron semanal /api/actualizar-semana y el horario de México.
-
-PARA INSTALAR EN TU CARPETA DE TRABAJO
-1. Haz una copia de seguridad de tu carpeta AppAhorro y de Firebase si corresponde.
-2. Extrae ESTE ZIP DENTRO de AppAhorro (no incluye carpeta envolvente).
-3. En VS Code ejecuta: npm install; npm run build; npm run dev
-4. Revisa que las dos tarjetas se vean y que los saldos sean correctos.
-5. Para publicar, en la misma carpeta ejecuta:
-   git add .
-   git commit -m "Separar fondos grupal y carrera"
-   git push origin main
-6. Verifica Vercel y la PWA instalada (podría requerir cerrar/reabrir).
-
-Las variables CRON_SECRET y FIREBASE_SERVICE_ACCOUNT_JSON configuradas en Vercel
-se conservan; no necesitas volver a generarlas.
+No uses instrucciones anteriores para cambiar las reglas de Firebase.

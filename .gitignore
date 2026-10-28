@@ -30,3 +30,6 @@ dist-ssr
 *firebase-adminsdk*.json
 *service-account*.json
 *service_account*.json
+
+# Listas importadas localmente, no publicar datos de estudiantes en el repositorio
+/datos_importacion/

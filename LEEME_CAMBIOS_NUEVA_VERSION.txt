@@ -1,0 +1,16 @@
+NUEVA VERSIÓN: AhorroGrupal multi-salón ($20 una sola caja)
+
+1) RESPALDAR Firebase Realtime Database antes de cambiar reglas o importar.
+2) Extraer este ZIP en la raíz de AppAhorro (sin carpeta extra).
+3) Aplicar las NUEVAS reglas de firebase-database.rules.json en Firebase Console.
+4) npm install ; npm test ; npm run build ; npm run dev
+5) Iniciar sesión como administrador.
+6) En «Ciclos y salones» importar datos_importacion/salones_2026-2027-A.json
+   (5 salones / 119 alumnos; solo nombres; no subir JSON a GitHub).
+7) Verificar en 507 el total anterior, pagos, avisos y retiro de prueba.
+8) Publicar vía git add . ; git status ; git commit ; git push origin main
+
+NOTA: Si publicas sin importar listas y sin nuevas reglas, los salones nuevos
+no podrán recibir pagos. El nodo antiguo ahorro NO se borra.
+
+Lee README.md para todas las advertencias e instrucciones.

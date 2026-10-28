@@ -1,26 +1,7 @@
-AHORRO GRUPAL - CORRECCIÓN DE VERIFICACIÓN DE PERMISOS
+DOCUMENTO DE UNA VERSIÓN ANTERIOR.
 
-Se modificó src/App.jsx para consultar adminUids/<uid> usando el oyente en tiempo real de Firebase Realtime Database.
-La aplicación YA NO CIERRA automáticamente la sesión cuando la primera lectura no devuelve true.
-Se añadió un botón para reintentar tras renovar el token de acceso.
-También se actualizó la versión de caché en public/sw.js.
+La configuración vigente de AhorroGrupal multi-salón está en:
+- LEEME_CAMBIOS_NUEVA_VERSION.txt
+- README.md
 
-SE CONSERVAN: tema morado, cerdito, PWA, lista y datos de aportaciones, Firebase Authentication y las reglas.
-NO se modificó Firebase ni se concedieron permisos nuevos.
-
-CÓMO ACTUALIZAR:
-1. Haz copia de tu carpeta de proyecto.
-2. Extrae este ZIP DIRECTAMENTE dentro de esa carpeta. Conserva .git, no borres tu base de datos.
-3. npm install
-4. npm run build
-5. git add .
-6. git commit -m "Revisar permisos Firebase en tiempo real"
-7. git push origin main
-
-QUÉ COMPROBAR:
-1. Abre la web desplegada en ventana de incógnito.
-2. Inicia sesión como administrador.
-3. Si no accede, revisa el texto bajo UID, que ahora indica si se leyó null, un texto o hubo un error.
-4. Usa "Volver a comprobar el permiso". Si persiste, conserva el mensaje exacto para diagnosticarlo.
-
-IMPORTANTE: los datos en /ahorro permanecen intactos. No se cambian las reglas de Firebase.
+No uses instrucciones anteriores para cambiar las reglas de Firebase.

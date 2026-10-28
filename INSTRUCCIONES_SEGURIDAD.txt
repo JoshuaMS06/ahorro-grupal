@@ -1,12 +1,7 @@
-AHORRO GRUPAL — Diagnóstico de permisos de administradores
+DOCUMENTO DE UNA VERSIÓN ANTERIOR.
 
-1. Descomprime este ZIP directamente dentro de tu carpeta AppAhorro (mantén .git).
-2. Prueba npm run dev y npm run build. Si funcionan, git add .; git commit -m "Mostrar diagnóstico de permisos y UID"; git push origin main.
-3. Abre la página desplegada. Inicia sesión como administrador.
-4. Si rechaza la autorización, copia el UID exacto mostrado por la aplicación.
-5. En Firebase > Authentication > Users comprueba que sea la misma cuenta.
-6. En Realtime Database > Data crea o corrige /adminUids/<UID> = true (tipo Boolean, no String).
-7. Las reglas deben permitir leer SOLO la autorización del propio UID y escribir en /ahorro SOLO si adminUids/<UID> es true. No abras .write al público.
-8. Reintenta el acceso y prueba un pago reversible, sin avanzar semana.
+La configuración vigente de AhorroGrupal multi-salón está en:
+- LEEME_CAMBIOS_NUEVA_VERSION.txt
+- README.md
 
-IMPORTANTE: este ZIP NO modifica por sí mismo las reglas ni el contenido de la base de datos. NO reimportes el nodo ahorro ni borres aportaciones.
+No uses instrucciones anteriores para cambiar las reglas de Firebase.

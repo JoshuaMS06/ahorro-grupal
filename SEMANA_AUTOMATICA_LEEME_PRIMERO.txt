@@ -1,67 +1,7 @@
-AHORRO GRUPAL — SEMANAS AUTOMÁTICAS · 22 OCTUBRE 2026
+DOCUMENTO DE UNA VERSIÓN ANTERIOR.
 
-FECHAS Y HORARIO
-- Semana 4: del lunes 19 de octubre al domingo 25 de octubre de 2026.
-- Semana 5: desde el lunes 26 de octubre de 2026, a las 00:00 en Ciudad de México.
-- Semana 6: desde el lunes 2 de noviembre de 2026, a las 00:00.
-- Cada semana incrementa automáticamente en 1 para siempre.
-- El valor visible depende de America/Mexico_City, NO del reloj local del teléfono.
+La configuración vigente de AhorroGrupal multi-salón está en:
+- LEEME_CAMBIOS_NUEVA_VERSION.txt
+- README.md
 
-QUÉ FUNCIONA SOLO CON EXTRAER Y PUBLICAR ESTE ZIP
-- Todos verán la semana correcta al abrir la web/PWA y al cambiar de lunes.
-- Recalcula al recuperar el foco después de estar cerrada/suspendida.
-- No requiere que el administrador pulse "Avanzar semana".
-- Los pagos actuales, integrantes, Firebase Auth, tema morado y cerdito se conservan.
-- Si entra un administrador autenticado, sincroniza ahorro/semana con el calendario.
-
-PARA QUE FIREBASE ACTUALICE LA SEMANA TAMBIÉN SIN QUE NADIE ENTRE
-Vercel Cron se ha preparado con "0 6 * * 1" = lunes 06:00 UTC = lunes
-00:00 en Ciudad de México (en 2026).
-IMPORTANTE: en Hobby Vercel puede ejecutar la tarea en cualquier momento entre
-00:00 y 00:59, y no garantiza un minuto exacto. La app muestra semana nueva
-sin esperar al cron, pero la escritura en Firebase podría ocurrir más tarde.
-
-Configurar UNA VEZ, antes/después de subir el ZIP:
-1. En Firebase Console → Ahorro Grupal → Configuración del proyecto (engranaje)
-   → Cuentas de servicio → Firebase Admin SDK → Generar nueva clave privada.
-   Descarga el JSON en tu computadora; NO lo copies dentro de AppAhorro, GitHub,
-   public/, src/, el ZIP ni se lo mandes a un tercero.
-2. En Vercel → ahorro-grupal → Settings → Environment Variables:
-   a) CRON_SECRET = una contraseña aleatoria larga (mínimo 32 caracteres),
-      marcada para Production.
-   b) FIREBASE_SERVICE_ACCOUNT_JSON = el CONTENIDO COMPLETO del JSON privado,
-      almacenado COMO SECRETO en Vercel y marcado para Production.
-   Si tu panel no acepta contenido multilínea, compacta SOLO el JSON (sin
-   cambiar su contenido). NUNCA lo guardes en archivos del proyecto.
-3. Despliega en producción con git push origin main DESPUÉS de configurar ambas.
-4. Vercel → proyecto ahorro-grupal → Settings → Cron Jobs.
-   Debe aparecer /api/actualizar-semana, schedule 0 6 * * 1.
-   Si no aparece, comprueba que vercel.json esté en la raíz configurada.
-5. Revisa los logs de Vercel el primer lunes después del despliegue.
-
-Si NO configuras los 2 secretos, el horario visual seguirá funcionando,
-pero la tarea privada no podrá sincronizar el campo ahorro/semana por sí sola.
-
-SEGURIDAD Y RESPALDO
-- La función privada exige Authorization: Bearer CRON_SECRET y nunca expone
-  claves al navegador.
-- Firebase continúa protegiendo escrituras con las reglas actuales.
-- La tarea solo consulta y sobrescribe /ahorro/semana (UN NÚMERO), sin tocar
-  /ahorro/integrantes ni /adminUids.
-- Guarda un respaldo JSON de Realtime Database antes del primer despliegue.
-
-PASOS PARA APLICAR EL ZIP EN LA CARPETA EXISTENTE
-1. Haz copia de seguridad de AppAhorro.
-2. Extrae AQUÍ en AppAhorro y reemplaza archivos; no elimines .git ni node_modules.
-3. Terminal de VS Code:
-   npm install
-   npm run build
-   git add .
-   git commit -m "Avance semanal automatico cada lunes"
-   git push origin main
-4. Espera a que Vercel termine y verifica en la página que diga Semana 04.
-   El 26/10 mostrará Semana 05 desde las 00:00 de Ciudad de México.
-
-AVISO: El Vercel Hobby Cron no garantiza ejecutar exactamente a las 00:00;
-para escritura estrictamente puntual en Firebase debes usar un programador
-con garantías de precisión superiores. La UI no depende del cron.
+No uses instrucciones anteriores para cambiar las reglas de Firebase.

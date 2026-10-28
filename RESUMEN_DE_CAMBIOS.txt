@@ -1,55 +1,7 @@
-AHORRO GRUPAL — ACTUALIZACIÓN VISUAL VIOLETA
-22 de octubre de 2026
+DOCUMENTO DE UNA VERSIÓN ANTERIOR.
 
-CAMBIOS HECHOS
-- La interfaz cambia completamente a un estilo morado/oscuro (incluidos fondos, tarjetas,
-  botones, barras de progreso y estados de aportaciones).
-- Eliminados los textos:
-    CADA APORTACIÓN CUENTA
-    Crecer juntos, ahorrar mejor.
-    Tus aportaciones, el progreso del equipo y cada semana en un solo lugar.
-    Sincronizado con Firebase
-    Un pequeño hábito, un gran resultado.
-- Reemplazada la frase 'Las metas grandes empiezan con $20 por semana.' por
-  '$20 por semana'.
-- Se quitó la barra motivacional completa.
-- El cerdito se conserva, con fondo violeta en los iconos de la web/PWA.
-- Colores actualizados para el navegador y el modo app instalada.
-- Caché de la PWA actualizado para que muestre esta nueva versión tras la publicación.
+La configuración vigente de AhorroGrupal multi-salón está en:
+- LEEME_CAMBIOS_NUEVA_VERSION.txt
+- README.md
 
-ARCHIVOS DEL PROYECTO MODIFICADOS
-- src/App.jsx            (secciones de texto y clases del diseño; Firebase intacto)
-- src/App.css            (estilo morado/oscuro adaptable a escritorio y móvil)
-- src/index.css          (colores globales)
-- index.html             (tema del navegador)
-- public/manifest.webmanifest (tema de app instalada)
-- public/sw.js           (versión de caché)
-- public/favicon.png y public/icons/*.png (cerdito con fondo morado)
-- README.md y LEEME_PRIMERO.txt (documentación)
-
-NO MODIFICADOS
-- firebase-database.rules.json (reglas de Firebase)
-- Configuración y rutas de Firebase en App.jsx
-- Datos de integrantes, sus aportaciones, autenticación y la lógica de pagos
-- Configuración Vercel ni scripts de compilación
-
-INSTALAR EN TU PROYECTO YA PUBLICADO
-1. Extrae el ZIP.
-2. Copia el contenido de la carpeta AhorroGrupal_Actualizado en tu proyecto
-   actual de Visual Studio Code, sustituyendo archivos coincidentes.
-3. NO borres la carpeta oculta .git de tu proyecto actual.
-4. En la terminal de tu proyecto:
-       npm install
-       npm run dev
-5. Comprueba que el diseño y los pagos cargan correctamente. Luego:
-       npm run build
-       git add .
-       git commit -m "Ajustes visuales morados Ahorro Grupal"
-       git push origin main
-6. Vercel actualizará la web si está enlazado a tu rama main.
-7. Cierra y reabre la PWA instalada. En la web usa Ctrl+F5 si ves
-   el tema anterior. Si aún aparece por caché, reinicia la app o
-   reinstálala desde el navegador.
-
-NOTA: Este ZIP es el código fuente completo, no incluye node_modules
-ni la carpeta .git. Conserva tu repositorio y configuraciones locales.
+No uses instrucciones anteriores para cambiar las reglas de Firebase.

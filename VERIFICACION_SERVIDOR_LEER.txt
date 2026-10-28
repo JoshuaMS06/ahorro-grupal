@@ -1,16 +1,7 @@
-AHORRO GRUPAL - VERIFICACION HTTPS DE PERMISOS (22 oct 2026)
+DOCUMENTO DE UNA VERSIÓN ANTERIOR.
 
-1. Extraer directamente sobre el proyecto existente, sin borrar .git.
-2. No toca usuarios, UID, reglas, aportaciones ni semana en Firebase.
-3. Mantiene diseño morado, cerdito e instalación PWA.
-4. Si la escucha de adminUids/UID devuelve null, verifica una vez más
-   el mismo dato usando la API REST OFICIAL de Firebase y el token de
-   autenticación de ESA cuenta. Nunca copia, registra o muestra ese token.
-5. Si el servidor responde Boolean true, habilita la interfaz de admin.
-   Las reglas Firebase siguen autorizando o bloqueando las escrituras.
-6. Si el servidor confirma null o deniega el acceso, muestra la causa
-   diferenciada para diagnosticar sin cambiar reglas a ciegas.
-7. Ejecutar npm install && npm run build antes de git add/commit/push.
-8. Probar inicio de sesión y un pago de prueba que después se revierta.
+La configuración vigente de AhorroGrupal multi-salón está en:
+- LEEME_CAMBIOS_NUEVA_VERSION.txt
+- README.md
 
-IMPORTANTE: No compartas contraseñas, credenciales o tokens.
+No uses instrucciones anteriores para cambiar las reglas de Firebase.

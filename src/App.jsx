@@ -1,18 +1,17 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'firebase/auth';
-import { getDatabase, ref, onValue, runTransaction } from 'firebase/database';
+import { getDatabase, ref, onValue, runTransaction, push, set } from 'firebase/database';
 import {
-  ArrowDownRight, ArrowUpRight, CalendarDays, CheckCheck, CheckCircle2,
-  CloudOff, Copy, Download, Eye, EyeOff, Filter,
-  Info, LockKeyhole, LogOut, Menu, Minus, Pin, Plus, Search, ShieldCheck,
-  UsersRound, Wallet, GraduationCap, X, AlertTriangle, RotateCw,
+  BookOpen, Bell, BellRing, CalendarClock, Check, CheckCircle2,
+  CircleDollarSign, Download, FileUp, History, LockKeyhole, UserRound,
+  LogOut, Menu, Minus, Plus, Search, ShieldCheck, UsersRound, Wallet, X,
+  AlertTriangle, GraduationCap, ArrowDownRight, Eye, EyeOff,
 } from 'lucide-react';
+import { CUOTA_SEMANAL, cuotaDeSalon, esLunes, estadoSemana, fechaMexico, isClassCode, isPeriodId, monto, pagoClave, pagosActivos, resumenCaja, semanaPeriodo, validarImportacion } from '../lib/aulas.js';
+import './index.css';
 import './App.css';
-import { semanaActualMexico, proximoLunesMexico } from '../lib/semanaAutomatica.js';
-import { CUOTA_GRUPAL, CUOTA_CARRERA, calcularResumenFondos, montosIntegrante } from '../lib/fondos.js';
 
-// Mantenemos el mismo proyecto y las mismas rutas de Firebase: ¡no migrar ni borrar datos!
 const firebaseConfig = {
   apiKey: 'AIzaSyA3AN8yCezlw3ORkPUCZp0Af97JgAoMbOE',
   authDomain: 'ahorro-grupal-industrial.firebaseapp.com',
@@ -20,543 +19,376 @@ const firebaseConfig = {
   storageBucket: 'ahorro-grupal-industrial.firebasestorage.app',
   messagingSenderId: '493506921547',
   appId: '1:493506921547:web:97ece4e262f02b6a9eb9ce',
-  measurementId: 'G-KQRYGD903K',
   databaseURL: 'https://ahorro-grupal-industrial-default-rtdb.firebaseio.com',
 };
-
-const firebaseApp = getApps().length ? getApp() : initializeApp(firebaseConfig);
-const database = getDatabase(firebaseApp);
-const auth = getAuth(firebaseApp);
-const INTEGRANTES_INICIALES = [
-  'Alan Patiño', 'Sergio Emilio', 'Eduardo Benitez', 'Joshua Moreno', 'Lilia Belén',
-  'Ana María', 'Jose Alberto', 'Camila Aimee', 'Jesús Eduardo', 'Brisa Yavhe',
-  'Liz Vianey', 'Delia Nahomy', 'Esther Terán', 'Axel Said', 'Ameyalli Arista',
-  'Marely Gutenberg', 'Hanna Citlali', 'Samuel Rafael', 'Sodel Eduardo',
+const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+const database = getDatabase(app);
+const auth = getAuth(app);
+const PROFESORES = [
+  'Ubaldo Jerónimo Carrera', 'Nicolas Hernández Ruiz', 'Rafael Rios Esperanza',
+  'Francisco Javier Sol Sampedro', 'Eduardo Martínez Mendoza',
+  'Néstor Hernández Silva', 'Adán Acosta Banda', 'Tania Castillo Villegas',
 ];
+const pesos = v => new Intl.NumberFormat('es-MX',{ style:'currency',currency:'MXN',maximumFractionDigits:0 }).format(Number(v)||0);
+const fechaLarga = t => t ? new Intl.DateTimeFormat('es-MX',{dateStyle:'medium',timeStyle:'short',timeZone:'America/Mexico_City'}).format(new Date(t)) : 'Sin fecha';
+const avisoError = err => {
+  if (err?.code==='PERMISSION_DENIED' || err?.code==='database/permission-denied') return 'Firebase denegó el acceso. Publica primero las reglas incluidas en el ZIP.';
+  if (String(err?.code||'').startsWith('auth/')) return 'No se pudo iniciar sesión. Revisa correo, contraseña o conexión.';
+  return err?.message || 'No se pudo completar la operación.';
+};
+const normalizarId = s => (s||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9_-]/g,'').toLowerCase();
+const defaultPeriod = '2026-2027-A';
 
-const currency = (amount) => new Intl.NumberFormat('es-MX', {
-  style: 'currency', currency: 'MXN', minimumFractionDigits: 0, maximumFractionDigits: 0,
-}).format(amount || 0);
-
-function initials(name) {
-  return name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toLocaleUpperCase('es-MX');
+function Panel({title,icon:Icon,children,action}) {
+  return <section className="ag-panel"><div className="ag-panel-heading"><h2>{Icon && <Icon size={19}/>} {title}</h2>{action}</div>{children}</section>;
 }
-
-function friendlyAuthError(error) {
-  switch (error?.code) {
-    case 'auth/invalid-email': return 'Revisa el formato del correo electrónico.';
-    case 'auth/invalid-credential':
-    case 'auth/wrong-password':
-    case 'auth/user-not-found': return 'Correo o contraseña incorrectos.';
-    case 'auth/too-many-requests': return 'Demasiados intentos. Inténtalo más tarde.';
-    case 'auth/operation-not-allowed': return 'Activa el acceso con correo y contraseña en Firebase Authentication.';
-    case 'auth/network-request-failed': return 'No hay conexión con Firebase. Comprueba tu internet.';
-    default: return 'No se pudo iniciar sesión. Inténtalo de nuevo.';
-  }
-}
-
-function Metric({ icon: Icon, label, value, sub, tone = 'purple' }) {
-  return (
-    <div className={`metric metric-${tone}`}>
-      <div className="metric-top"><span className="metric-icon"><Icon size={19}/></span><span className="metric-spark"><ArrowUpRight size={16}/></span></div>
-      <p className="metric-value">{value}</p>
-      <p className="metric-label">{label}</p>
-      <p className="metric-sub">{sub}</p>
-    </div>
-  );
-}
-
-function BalanceFund({ tipo, etiqueta, icon: Icon, total, esperado, pendiente, porcentaje, semana, cargando }) {
-  const nombre = tipo === 'grupal' ? 'Fondo grupal' : 'Fondo de carrera';
-  return (
-    <article className={`main-balance fund-balance fund-balance-${tipo}`} aria-label={nombre}>
-      <div className="balance-decor one"/><div className="balance-decor two"/>
-      <div className="balance-inner">
-        <div className="balance-top"><span className="balance-tag"><Icon size={17}/> {nombre}</span></div>
-        <div className="balance-body">
-          <p>{etiqueta}</p>
-          <h2>{cargando ? '—' : currency(total)}</h2>
-          <span>$10 por semana · por integrante</span>
-        </div>
-        <div className="balance-bottom">
-          <div className="balance-progress-heading"><span>Progreso del fondo</span><strong>{porcentaje}%</strong></div>
-          <div className="balance-track"><span style={{ width: `${porcentaje}%` }}/></div>
-          <div className="balance-foot"><span>Meta: {cargando ? '—' : currency(esperado)}</span><span>Semana {semana}</span></div>
-          <div className="fund-pending">Por recaudar en {tipo === 'grupal' ? 'Grupal' : 'Carrera'}: <strong>{cargando ? '—' : currency(pendiente)}</strong></div>
-        </div>
-        {tipo === 'grupal' ? <div className="hero-coin" aria-hidden="true"><img src="/icons/cerdito-512.png" alt=""/></div>
-          : <div className="fund-illustration" aria-hidden="true"><GraduationCap size={112}/></div>}
-      </div>
-    </article>
-  );
-}
-
-function MemberCard({ name, pagos, semana, pinned, onPin, isAdmin, onPayment, busy }) {
-  const { pagados, pendiente, grupal, carrera, grupalPendiente, carreraPendiente } = montosIntegrante(pagos, semana);
-  const alDia = pendiente === 0;
-  const porcentaje = semana > 0 ? Math.min(100, Math.round((pagados / semana) * 100)) : 100;
-  return (
-    <article className={`member ${pinned ? 'member-pinned' : ''}`}>
-      <div className="member-avatar" aria-hidden="true">{initials(name)}</div>
-      <div className="member-info">
-        <div className="member-name-row"><h3 title={name}>{name}</h3>{pinned && <span className="favorite-label">Mi perfil</span>}</div>
-        <div className="member-meta"><span>{pagados} {pagados === 1 ? 'aportación' : 'aportaciones'}</span></div>
-        <div className="member-funds" aria-label={`Fondos de ${name}`}>
-          <span className="member-fund member-fund-grupal">Grupal: <strong>{currency(grupal)}</strong></span>
-          <span className="member-fund member-fund-carrera">Carrera: <strong>{currency(carrera)}</strong></span>
-        </div>
-        <div className="member-progress" aria-label={`${porcentaje}% de semanas cubiertas`}><span style={{ width: `${porcentaje}%` }}/></div>
-      </div>
-      <div className="member-state">
-        <span className={`status ${alDia ? 'status-ok' : 'status-debt'}`}>
-          {alDia ? <><CheckCircle2 size={15}/> Al corriente</> : <>{pendiente} {pendiente === 1 ? 'semana pendiente' : 'semanas pendientes'}</>}
-        </span>
-        <span className="status-detail">{alDia ? 'Sin adeudos' : <>Grupal: {currency(grupalPendiente)}<br/>Carrera: {currency(carreraPendiente)}</>}</span>
-      </div>
-      <div className="member-actions">
-        <button type="button" className={`icon-button pin-button ${pinned ? 'is-pinned' : ''}`} onClick={() => onPin(name)}
-          title={pinned ? 'Quitar de favoritos' : 'Fijar como mi perfil'} aria-label={pinned ? `Quitar a ${name} de favoritos` : `Fijar a ${name} como mi perfil`}>
-          <Pin size={18} fill={pinned ? 'currentColor' : 'none'}/>
-        </button>
-        {isAdmin && <div className="payment-actions" aria-label={`Administrar aportaciones de ${name}`}>
-          <button type="button" className="payment-minus" disabled={busy || pagados <= 0} onClick={() => onPayment(name, -1)} title="Retirar una aportación semanal: $10 Grupal y $10 Carrera" aria-label={`Quitar aportación semanal de ${name} de ambos fondos`}><Minus size={17}/></button>
-          <button type="button" className="payment-plus" disabled={busy} onClick={() => onPayment(name, 1)} title="Registrar una aportación semanal: $10 Grupal y $10 Carrera" aria-label={`Registrar aportación semanal de ${name} en ambos fondos`}><Plus size={18}/></button>
-        </div>}
-      </div>
-    </article>
-  );
-}
-
-// Verificación independiente frente al servidor oficial de Realtime Database.
-// El token se envía ÚNICAMENTE a la URL del proyecto Firebase configurado.
-// No se almacena, no se muestra en pantalla ni se registra en consola.
-async function permisoDesdeServidor(cuenta) {
-  const token = await cuenta.getIdToken(true);
-  const url = new URL(`${firebaseConfig.databaseURL}/adminUids/${encodeURIComponent(cuenta.uid)}.json`);
-  url.searchParams.set('auth', token);
-  const response = await fetch(url.toString(), { method: 'GET', cache: 'no-store' });
-  let value;
-  try {
-    value = await response.json();
-  } catch {
-    throw new Error(`Firebase respondió HTTP ${response.status} sin JSON válido.`);
-  }
-  if (!response.ok) {
-    const reason = typeof value?.error === 'string' ? value.error : `HTTP ${response.status}`;
-    throw new Error(`El servidor rechazó la lectura (${reason}).`);
-  }
-  return value;
+function SmallButton({children,onClick,disabled=false,variant='soft',type='button'}) {
+  return <button type={type} className={`ag-btn ag-btn-${variant}`} disabled={disabled} onClick={onClick}>{children}</button>;
 }
 
 export default function App() {
-  const [integrantes, setIntegrantes] = useState({});
-  // El calendario mexicano, no un incremento manual, determina la semana.
-  const [semana, setSemana] = useState(() => semanaActualMexico());
-  const [semanaGuardada, setSemanaGuardada] = useState(null);
-  const [cargando, setCargando] = useState(true);
-  const [datosInicializados, setDatosInicializados] = useState(false);
-  const [dbError, setDbError] = useState('');
-  const [pinned, setPinned] = useState(() => localStorage.getItem('ahorro:perfil') || localStorage.getItem('pinnedUser') || '');
-  const [filtro, setFiltro] = useState('todos');
-  const [busqueda, setBusqueda] = useState('');
-  const [usuario, setUsuario] = useState(null);
-  const [admin, setAdmin] = useState(false);
-  const [validandoAdmin, setValidandoAdmin] = useState(true);
-  const [adminOpen, setAdminOpen] = useState(false);
-  const [correo, setCorreo] = useState('');
-  const [contrasena, setContrasena] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [authError, setAuthError] = useState('');
-  const [uidParaAutorizar, setUidParaAutorizar] = useState('');
-  const [detallePermiso, setDetallePermiso] = useState('');
-  const [authBusy, setAuthBusy] = useState(false);
-  const [revisionPermiso, setRevisionPermiso] = useState(0);
-  const [revisandoPermiso, setRevisandoPermiso] = useState(false);
-  const [operacion, setOperacion] = useState('');
-  const [mensaje, setMensaje] = useState('');
-  const [installEvent, setInstallEvent] = useState(null);
-  const [installOpen, setInstallOpen] = useState(false);
-  const [instalada, setInstalada] = useState(() => window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true);
-  const [online, setOnline] = useState(navigator.onLine);
-  const [mobileMenu, setMobileMenu] = useState(false);
+  const [periodos,setPeriodos]=useState({});
+  const [periodoId,setPeriodoId]=useState(()=>localStorage.getItem('ag:periodo')||defaultPeriod);
+  const [salonId,setSalonId]=useState(()=>localStorage.getItem('ag:salon')||'507');
+  const [datos,setDatos]=useState(null);
+  const [legacy,setLegacy]=useState({});
+  const [cargando,setCargando]=useState(true);
+  const [dbError,setDbError]=useState('');
+  const [usuario,setUsuario]=useState(null);
+  const [esAdmin,setEsAdmin]=useState(false);
+  const [loginOpen,setLoginOpen]=useState(false);
+  const [email,setEmail]=useState('');
+  const [password,setPassword]=useState('');
+  const [seePassword,setSeePassword]=useState(false);
+  const [loginError,setLoginError]=useState('');
+  const [loginBusy,setLoginBusy]=useState(false);
+  const [operacion,setOperacion]=useState('');
+  const [toast,setToast]=useState('');
+  const [search,setSearch]=useState('');
+  const [filtro,setFiltro]=useState('todos');
+  const [vista,setVista]=useState('pagos');
+  const [fecha,setFecha]=useState(Date.now());
+  const [semanaElegida,setSemanaElegida]=useState(0);
+  const [mostrarMenu,setMostrarMenu]=useState(false);
+  const [nuevoPeriodo,setNuevoPeriodo]=useState({id:'',lunesBase:'',semanaBase:1});
+  const [nuevoSalon,setNuevoSalon]=useState('');
+  const [nuevoEstudiante,setNuevoEstudiante]=useState({nombre:'',control:''});
+  const [importInfo,setImportInfo]=useState(null);
+  const [importFile,setImportFile]=useState(null);
+  const [retiro,setRetiro]=useState({monto:'',motivo:''});
+  const [notificaciones,setNotificaciones]=useState(typeof Notification!=='undefined' && Notification.permission==='granted');
+  const [instalarEvento,setInstalarEvento]=useState(null);
+  const [modalInstalar,setModalInstalar]=useState(false);
+  const [instalada,setInstalada]=useState(()=>window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone===true);
+  const primerEvento=useRef(null);
 
-  useEffect(() => {
-    const cancel = onValue(ref(database, 'ahorro'), (snapshot) => {
-      const data = snapshot.val();
-      setDatosInicializados(Boolean(data?.integrantes));
-      setIntegrantes(data?.integrantes || {});
-      setSemanaGuardada(Number.isInteger(Number(data?.semana)) ? Number(data?.semana) : null);
-      setDbError('');
-      setCargando(false);
-    }, (error) => {
-      console.error('No se pudieron leer los datos:', error);
-      setDbError('No se pueden leer los datos de Firebase. Revisa la conexión y las reglas de lectura.');
-      setCargando(false);
-    });
-    return () => cancel();
-  }, []);
+  // Las reglas de Firebase restringen periodos y aulas a administradores.
+  // No iniciamos listeners antes de comprobar adminUids: una lectura denegada
+  // cancela la suscripción y esta no se recupera por sí sola al iniciar sesión.
+  useEffect(()=>{
+    if(!esAdmin){setPeriodos({});setDbError('');return;}
+    const stop=onValue(ref(database,'periodos'),snap=>{setPeriodos(snap.val()||{});setDbError('');},err=>setDbError(avisoError(err)));
+    return ()=>stop();
+  },[esAdmin]);
+  useEffect(()=>{
+    setDatos(null);setSemanaElegida(0);setSearch('');
+    if(!esAdmin){setCargando(false);return;}
+    setCargando(true);
+    const stop=onValue(ref(database,`aulas/${periodoId}/${salonId}`),snap=>{setDatos(snap.val());setCargando(false);setDbError('');},err=>{setCargando(false);setDbError(avisoError(err));});
+    return ()=>stop();
+  },[esAdmin,periodoId,salonId]);
+  useEffect(()=>{
+    // El historial del 507 solo se consulta tras autenticar al administrador.
+    if(!esAdmin || periodoId!==defaultPeriod || salonId!=='507') {setLegacy({});return;}
+    const stop=onValue(ref(database,'ahorro/integrantes'),snap=>setLegacy(snap.val()||{}),()=>setLegacy({}));
+    return ()=>stop();
+  },[esAdmin,periodoId,salonId]);
+  useEffect(()=>{
+    const unsub=onAuthStateChanged(auth,u=>{setUsuario(u);setEsAdmin(false);setLoginError('');});
+    return ()=>unsub();
+  },[]);
+  useEffect(()=>{
+    if(!usuario){setEsAdmin(false);return;}
+    const stop=onValue(ref(database,`adminUids/${usuario.uid}`),s=>{
+      setEsAdmin(s.val()===true);if(s.val()===true)setLoginOpen(false);
+    },e=>{setEsAdmin(false);setLoginError(avisoError(e));});
+    return ()=>stop();
+  },[usuario]);
+  useEffect(()=>{
+    const tick=()=>{ const now=Date.now(); setFecha(prev=>fechaMexico(prev)===fechaMexico(now)?prev:now); };
+    const timer=setInterval(tick,1000);
+    document.addEventListener('visibilitychange',tick);
+    return ()=>{clearInterval(timer);document.removeEventListener('visibilitychange',tick);};
+  },[]);
+  useEffect(()=>{
+    const handler=e=>{e.preventDefault();setInstalarEvento(e);};
+    const installed=()=>{setInstalada(true);setModalInstalar(false);};
+    window.addEventListener('beforeinstallprompt',handler);
+    window.addEventListener('appinstalled',installed);
+    return ()=>{window.removeEventListener('beforeinstallprompt',handler);window.removeEventListener('appinstalled',installed);};
+  },[]);
+  useEffect(()=>{
+    if(!toast)return;
+    const timer=setTimeout(()=>setToast(''),6500);
+    return ()=>clearTimeout(timer);
+  },[toast]);
 
-  // Siempre calculamos desde la FECHA de Ciudad de México, no desde el reloj
-  // local del dispositivo. Al abrir la app tras días cerrada, se pone al día.
-  // Mientras permanezca abierta, se actualiza en el cambio de lunes.
-  useEffect(() => {
-    const actualizar = () => setSemana(semanaActualMexico());
-    const reloj = window.setInterval(actualizar, 1000);
-    document.addEventListener('visibilitychange', actualizar);
-    window.addEventListener('focus', actualizar);
-    actualizar();
-    return () => {
-      window.clearInterval(reloj);
-      document.removeEventListener('visibilitychange', actualizar);
-      window.removeEventListener('focus', actualizar);
-    };
-  }, []);
+  const periodKeys=Object.keys(periodos).sort().reverse();
+  const periodo=periodos[periodoId]||null;
+  const salones=Object.keys(periodo?.salones||{}).sort((a,b)=>a.localeCompare(b,'es',{numeric:true}));
+  const semanaActual=semanaPeriodo(periodo,fecha);
+  const semana=semanaElegida||semanaActual;
+  const cuotaSemanal=cuotaDeSalon(salonId,datos?.meta);
+  const integrantes=datos?.integrantes || ((periodoId===defaultPeriod && salonId==='507') ? Object.fromEntries(Object.keys(legacy).map((nombre,i)=>[`hist${String(i+1).padStart(3,'0')}`,{nombre,aliasLegado:nombre}])) : {});
+  const lista=useMemo(()=>Object.entries(integrantes).map(([id,v])=>({id,...v})).sort((a,b)=>a.nombre.localeCompare(b.nombre,'es')),[integrantes]);
+  const pagos=datos?.pagos||{};
+  const retiros=datos?.retiros||{};
+  const mensajesRetiro=useMemo(()=>Object.entries(retiros).map(([id,r])=>({id,...r})).sort((a,b)=>(b.creadoEn||0)-(a.creadoEn||0)),[retiros]);
+  const legadoTotal=useMemo(()=>lista.reduce((s,e)=>s + (periodoId===defaultPeriod && salonId==='507' ? Math.max(0,Number(legacy?.[e.aliasLegado]?.pagos)||0)*CUOTA_SEMANAL:0),0),[lista,legacy,periodoId,salonId]);
+  const resumen=resumenCaja(pagos,retiros,legadoTotal);
+  const detalleSemana=lista.map(e=>({...e,estado:estadoSemana(pagos,e.id,semana)}));
+  const vigenteParaRegistrar=semana>=Number(datos?.meta?.inicioDetalle||1);
+  const estadoAlumno=e=>{
+    if(!vigenteParaRegistrar)return 'sin-dato';
+    return estadoSemana(pagos,e.id,semana);
+  };
+  const pagaron=detalleSemana.filter(e=>estadoAlumno(e)==='pagado').length;
+  const pendientes=detalleSemana.filter(e=>estadoAlumno(e)==='pendiente').length;
+  const visible=detalleSemana.filter(e=>(e.nombre||'').toLocaleLowerCase('es').includes(search.toLocaleLowerCase('es')) || (e.control||'').includes(search)).filter(e=>filtro==='todos'||estadoAlumno(e)===filtro);
+  const pagosHist=Object.entries(pagos).flatMap(([id,p])=>{
+    if(!p?.estudianteId)return [];
+    const eventos=Object.entries(p.historial||{});
+    return eventos.length ? eventos.map(([key,ev])=>({id:`${id}-${key}`,nombre:p.nombre,estudianteId:p.estudianteId,semana:p.semana,monto:p.monto,estado:ev.tipo==='registro'?'pagado':'anulado',creadoEn:ev.fecha,registradoPor:ev.uid,motivo:ev.motivo||''})) : [{id,...p}];
+  }).sort((a,b)=>(b.creadoEn||0)-(a.creadoEn||0));
 
-  // Si entra un administrador y el cron aún no actualizó el dato persistido,
-  // se sincroniza SOLAMENTE ahorro/semana. Nunca se modifican aportaciones.
-  // Es idempotente: múltiples pestañas no incrementan la semana dos veces.
-  useEffect(() => {
-    if (!admin || !datosInicializados || semanaGuardada === semana) return;
-    let activo = true;
-    const sincronizar = async () => {
-      try {
-        await runTransaction(ref(database, 'ahorro/semana'), (actual) => {
-          if (Number(actual) === semana) return;
-          return semana;
-        }, { applyLocally: false });
-      } catch (error) {
-        if (activo) console.error('No se pudo sincronizar la semana calendario:', error);
+  useEffect(()=>{
+    const events=Object.entries(retiros).map(([id,r])=>`${id}:${r.estado}`).sort();
+    const current=events.join('|');
+    if(primerEvento.current===null){primerEvento.current=current;return;}
+    if(primerEvento.current!==current && notificaciones && typeof Notification!=='undefined' && Notification.permission==='granted'){
+      const ultimo=mensajesRetiro[0];
+      if(ultimo){try {new Notification('Ahorro Grupal · Movimiento de caja',{body:`Retiro ${ultimo.estado}: ${pesos(ultimo.monto)} · ${ultimo.motivo}` ,icon:'/icons/cerdito-192.png'});}catch{/* navegador no admite aviso */}}
+    }
+    primerEvento.current=current;
+  },[retiros,mensajesRetiro,notificaciones]);
+  useEffect(()=>{primerEvento.current=null;},[periodoId,salonId]);
+
+  const withOperation=async(label,fn)=>{
+    if(operacion)return;
+    setOperacion(label);
+    try {const result=await fn();if(typeof result==='string')setToast(result);}
+    catch(e){setToast(`No se completó la operación: ${avisoError(e)}`);}
+    finally{setOperacion('');}
+  };
+  const signIn=async e=>{
+    e.preventDefault();setLoginBusy(true);setLoginError('');
+    try {await signInWithEmailAndPassword(auth,email.trim(),password);setPassword('');}
+    catch(e){setLoginError(avisoError(e));}
+    finally{setLoginBusy(false);}
+  };
+  const resetPassword=async()=>{
+    if(!email.trim()){setLoginError('Primero introduce el correo.');return;}
+    try {await sendPasswordResetEmail(auth,email.trim());setToast('Se ha enviado el correo de recuperación si la cuenta existe.');}
+    catch(e){setLoginError(avisoError(e));}
+  };
+  const cambiarPeriodo=id=>{
+    setPeriodoId(id);localStorage.setItem('ag:periodo',id);
+    const listaGrupos=Object.keys(periodos[id]?.salones||{}).sort((a,b)=>a.localeCompare(b,'es',{numeric:true}));
+    const next=listaGrupos.includes(salonId)?salonId:(listaGrupos[0]||'507');
+    setSalonId(next);localStorage.setItem('ag:salon',next);
+  };
+  const cambiarSalon=id=>{setSalonId(id);localStorage.setItem('ag:salon',id);};
+  const importar=async()=>{
+    if(!esAdmin || !importInfo)return;
+    await withOperation('importar',async()=>{
+      const info=importInfo;
+      const p=info.periodo;
+      const meta={nombre:p.nombre||p.id,lunesBase:p.lunesBase,semanaBase:Number(p.semanaBase||1),creadoEn:Date.now()};
+      await runTransaction(ref(database,`periodos/${p.id}/meta`),current=>current===null?meta:undefined,{applyLocally:false});
+      for(const [codigo,estudiantes] of Object.entries(info.salones)){
+        await runTransaction(ref(database,`periodos/${p.id}/salones/${codigo}`),current=>current===null?{nombre:`Salón ${codigo}`}:undefined,{applyLocally:false});
+        const start=(p.id===defaultPeriod && codigo==='507') ? semanaPeriodo(meta)+1 : semanaPeriodo(meta);
+        await runTransaction(ref(database,`aulas/${p.id}/${codigo}/meta`),current=>current===null?{nombre:`Salón ${codigo}`,inicioDetalle:start,cuotaSemanal:cuotaDeSalon(codigo),creadoEn:Date.now()}:undefined,{applyLocally:false});
+        const mapping=Object.fromEntries(estudiantes.map(e=>[e.id,{nombre:e.nombre.trim(),control:String(e.control||'').trim(),...(e.aliasLegado?{aliasLegado:e.aliasLegado}:{} )}]));
+        await runTransaction(ref(database,`aulas/${p.id}/${codigo}/integrantes`),current=>current===null?mapping:undefined,{applyLocally:false});
       }
-    };
-    sincronizar();
-    return () => { activo = false; };
-  }, [admin, datosInicializados, semanaGuardada, semana]);
-
-  // Un resultado nulo del listener no equivale a una denegación de permisos.
-  // Confirmamos los datos directamente contra Firebase antes de concluir que faltan.
-  // La comprobación REST oficial está autenticada con el token real de este usuario.
-  // Las reglas de RTDB siguen siendo la autoridad para autorizar escrituras.
-  useEffect(() => {
-    let activo = true;
-    let cancelarLectura = () => {};
-    let uidEnEscucha = '';
-    let intento = 0;
-
-    const permitirAcceso = () => {
-      setAdmin(true);
-      setValidandoAdmin(false);
-      setAuthError('');
-      setUidParaAutorizar('');
-      setDetallePermiso('');
-      setAdminOpen(false);
-      setContrasena('');
-    };
-
-    const cancelarAuth = onAuthStateChanged(auth, (cuenta) => {
-      cancelarLectura();
-      cancelarLectura = () => {};
-      const version = ++intento;
-      uidEnEscucha = cuenta?.uid || '';
-      setUsuario(cuenta);
-      setAdmin(false);
-      setUidParaAutorizar(cuenta?.uid || '');
-      setDetallePermiso('');
-      setValidandoAdmin(Boolean(cuenta));
-      if (!cuenta) {
-        setAuthError('');
-        return;
-      }
-
-      const uid = cuenta.uid;
-      const rutaPermiso = `adminUids/${uid}`;
-      const procesarLectura = (snapshot) => {
-        if (!activo || uidEnEscucha !== uid) return;
-        const lectura = ++intento;
-        const valor = snapshot.val();
-        if (valor === true) {
-          permitirAcceso();
-          return;
-        }
-        setAdmin(false);
-        setUidParaAutorizar(uid);
-        if (valor !== null) {
-          setValidandoAdmin(false);
-          setAuthError('El permiso existe, pero no tiene el valor Boolean true.');
-          setDetallePermiso(`La lectura de /${rutaPermiso} devolvió ${JSON.stringify(valor)} (${typeof valor}). Debe ser true, sin comillas.`);
-          return;
-        }
-
-        setValidandoAdmin(true);
-        setAuthError('Comprobando autorización directamente con Firebase…');
-        setDetallePermiso('El listener devolvió null. Verificando el dato directamente en el servidor de Firebase…');
-        permisoDesdeServidor(cuenta).then((respuesta) => {
-          if (!activo || uidEnEscucha !== uid || lectura !== intento) return;
-          if (respuesta === true) {
-            permitirAcceso();
-            return;
-          }
-          setAdmin(false);
-          setValidandoAdmin(false);
-          setAuthError('Tu cuenta inició sesión, pero el servidor no confirmó el permiso administrativo.');
-          if (respuesta === null) {
-            setDetallePermiso(`El listener y una consulta HTTPS autenticada devolvieron null para /${rutaPermiso} en ${firebaseConfig.databaseURL}. El archivo exportado contiene true, así que hay que comprobar el nombre exacto de la clave y el proyecto de origen del exportado; no borres registros.`);
-          } else {
-            setDetallePermiso(`La consulta HTTPS autenticada devolvió ${JSON.stringify(respuesta)} (${typeof respuesta}) en /${rutaPermiso}. Para administrar debe ser Boolean true.`);
-          }
-        }).catch((error) => {
-          if (!activo || uidEnEscucha !== uid || lectura !== intento) return;
-          setAdmin(false);
-          setValidandoAdmin(false);
-          setAuthError('No se pudo comprobar la autorización en el servidor.');
-          setDetallePermiso(`El listener devolvió null y la consulta HTTPS no pudo confirmarlo: ${error?.message || 'error desconocido'}. No se han cambiado permisos ni datos.`);
-        });
-      };
-      const procesarError = (error) => {
-        if (!activo || uidEnEscucha !== uid || version > intento) return;
-        ++intento;
-        setValidandoAdmin(false);
-        setAdmin(false);
-        setUidParaAutorizar(uid);
-        setAuthError('Firebase no permitió consultar el permiso administrativo.');
-        setDetallePermiso(`La lectura de /${rutaPermiso} falló: ${error?.code || error?.message || 'error desconocido'}. Comprueba que las reglas estén publicadas.`);
-      };
-      cancelarLectura = onValue(ref(database, rutaPermiso), procesarLectura, procesarError);
+      setImportInfo(null);setImportFile(null);cambiarPeriodo(p.id);
+      setSalonId(Object.keys(info.salones)[0]);
+      localStorage.setItem('ag:salon',Object.keys(info.salones)[0]);
+      return `Importación terminada: ${Object.keys(info.salones).length} salones. No se sustituyeron registros existentes.`;
     });
-
-    return () => {
-      activo = false;
-      uidEnEscucha = '';
-      ++intento;
-      cancelarLectura();
-      cancelarAuth();
-    };
-  }, [revisionPermiso]);
-
-  useEffect(() => {
-    const onOnline = () => setOnline(navigator.onLine);
-    const onInstall = (event) => { event.preventDefault(); setInstallEvent(event); };
-    const onInstalled = () => { setInstalada(true); setInstallOpen(false); setInstallEvent(null); };
-    window.addEventListener('online', onOnline);
-    window.addEventListener('offline', onOnline);
-    window.addEventListener('beforeinstallprompt', onInstall);
-    window.addEventListener('appinstalled', onInstalled);
-    return () => {
-      window.removeEventListener('online', onOnline);
-      window.removeEventListener('offline', onOnline);
-      window.removeEventListener('beforeinstallprompt', onInstall);
-      window.removeEventListener('appinstalled', onInstalled);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!mensaje) return;
-    const timer = setTimeout(() => setMensaje(''), 4500);
-    return () => clearTimeout(timer);
-  }, [mensaje]);
-
-  const miembros = useMemo(() => Object.entries(integrantes).map(([name, data]) => ({
-    name, pagos: Math.max(0, Number(data?.pagos) || 0),
-  })).sort((a, b) => a.name.localeCompare(b.name, 'es')), [integrantes]);
-  const stats = useMemo(() => calcularResumenFondos(miembros, semana), [miembros, semana]);
-  const miembrosVisibles = useMemo(() => miembros
-    .filter((m) => m.name.toLocaleLowerCase('es-MX').includes(busqueda.trim().toLocaleLowerCase('es-MX')))
-    .filter((m) => filtro === 'todos' || (filtro === 'al-dia' ? m.pagos >= semana : m.pagos < semana))
-    .sort((a, b) => (a.name === pinned ? -1 : 0) - (b.name === pinned ? -1 : 0) || a.name.localeCompare(b.name, 'es')),
-  [miembros, busqueda, filtro, pinned, semana]);
-
-  const togglePin = (name) => {
-    const next = pinned === name ? '' : name;
-    setPinned(next);
-    if (next) localStorage.setItem('ahorro:perfil', next);
-    else localStorage.removeItem('ahorro:perfil');
-    localStorage.removeItem('pinnedUser');
+  };
+  const onArchivo=async(e)=>{
+    const file=e.target.files?.[0];if(!file)return;
+    try{
+      if(file.size>2_000_000)throw new Error('El archivo supera 2 MB.');
+      const parsed=JSON.parse(await file.text());
+      const res=validarImportacion(parsed);
+      if(periodos[parsed.periodo.id] && !window.confirm('Este periodo ya existe. La importación solo creará grupos que falten, sin sustituir datos. ¿Continuar?'))return;
+      setImportInfo(parsed);setImportFile({name:file.name,...res});
+    }catch(err){setToast(`No se pudo leer la lista: ${err.message}`);}
+  };
+  const crearPeriodo=async()=>{
+    if(!esAdmin)return;
+    const {id,lunesBase,semanaBase}=nuevoPeriodo;
+    if(!isPeriodId(id)||!esLunes(lunesBase)||!Number.isInteger(Number(semanaBase))||Number(semanaBase)<1){setToast('Indica un periodo como 2027-2028-A y una fecha de lunes válida.');return;}
+    await withOperation('periodo',async()=>{
+      const result=await runTransaction(ref(database,`periodos/${id}/meta`),a=>a===null?{nombre:id,lunesBase,semanaBase:Number(semanaBase),creadoEn:Date.now()}:undefined,{applyLocally:false});
+      if(result.committed){cambiarPeriodo(id);setNuevoPeriodo({id:'',lunesBase:'',semanaBase:1});}
+      return result.committed?'Nuevo ciclo creado. Agrega un salón o importa una lista.':'Ese ciclo ya existe; no se reemplazó.';
+    });
+  };
+  const crearSalon=async()=>{
+    const id=nuevoSalon.trim();if(!esAdmin||!periodo||!isClassCode(id)){setToast('Indica un código de salón válido.');return;}
+    await withOperation('salon',async()=>{
+      const result=await runTransaction(ref(database,`aulas/${periodoId}/${id}/meta`),a=>a===null?{nombre:`Salón ${id}`,inicioDetalle:semanaActual,cuotaSemanal:cuotaDeSalon(id),creadoEn:Date.now()}:undefined,{applyLocally:false});
+      if(!result.committed)return 'Ese salón ya existe.';
+      await set(ref(database,`periodos/${periodoId}/salones/${id}`),{nombre:`Salón ${id}`});
+      cambiarSalon(id);setNuevoSalon('');return 'Salón creado sin registros anteriores.';
+    });
+  };
+  const agregarAlumno=async()=>{
+    if(!esAdmin||!datos?.meta)return;
+    const nombre=nuevoEstudiante.nombre.trim();const control=nuevoEstudiante.control.trim();
+    if(nombre.length<3||nombre.length>120){setToast('Escribe el nombre del estudiante.');return;}
+    const id=control ? `n${normalizarId(control)}` : `e${Date.now().toString(36)}`;
+    if(!/^[a-z0-9_-]{2,32}$/.test(id)){setToast('El número de control contiene caracteres no permitidos.');return;}
+    await withOperation('alumno',async()=>{
+      const result=await runTransaction(ref(database,`aulas/${periodoId}/${salonId}/integrantes/${id}`),v=>v===null?{nombre,control}:undefined,{applyLocally:false});
+      if(result.committed)setNuevoEstudiante({nombre:'',control:''});
+      return result.committed?'Estudiante agregado.':'El estudiante ya existe.';
+    });
+  };
+  const registrarPago=async e=>{
+    if(!esAdmin||!vigenteParaRegistrar||periodo?.meta?.cerradoEn)return;
+    const key=pagoClave(e.id,semana);
+    if(pagos[key]?.estado==='pagado')return;
+    await withOperation(`pago:${e.id}`,async()=>{
+      const eventoId=push(ref(database,`aulas/${periodoId}/${salonId}/pagos`)).key;
+      const r=await runTransaction(ref(database,`aulas/${periodoId}/${salonId}/pagos/${key}`),v=>{
+        if(v?.estado==='pagado')return;
+        const cuando=Date.now();
+        return {...(v||{}),estudianteId:e.id,nombre:e.nombre,semana,monto:cuotaSemanal,estado:'pagado',creadoEn:cuando,registradoPor:usuario.uid,correcciones:v?.correcciones||0,historial:{...(v?.historial||{}),[eventoId]:{tipo:'registro',fecha:cuando,uid:usuario.uid}}};
+      },{applyLocally:false});
+      return r.committed?`Pago de ${pesos(cuotaSemanal)} registrado para ${e.nombre}, semana ${semana}.`:'Esta semana ya estaba pagada.';
+    });
+  };
+  const anularPago=async e=>{
+    if(!esAdmin||periodo?.meta?.cerradoEn)return;
+    const motivo=window.prompt(`Motivo de anular el pago de ${e.nombre} (semana ${semana}):`);
+    if(motivo===null)return;
+    if(motivo.trim().length<5){setToast('Escribe un motivo de al menos 5 caracteres para la corrección.');return;}
+    const key=pagoClave(e.id,semana);
+    await withOperation(`anular:${e.id}`,async()=>{
+      const eventoId=push(ref(database,`aulas/${periodoId}/${salonId}/pagos`)).key;
+      const r=await runTransaction(ref(database,`aulas/${periodoId}/${salonId}/pagos/${key}`),v=>{
+        if(!v||v.estado!=='pagado')return;
+        const cuando=Date.now();
+        return {...v,estado:'anulado',anuladoEn:cuando,anuladoPor:usuario.uid,correcciones:(v.correcciones||0)+1,historial:{...(v.historial||{}),[eventoId]:{tipo:'anulacion',fecha:cuando,uid:usuario.uid,motivo:motivo.trim()}}};
+      },{applyLocally:false});
+      return r.committed?'Pago anulado; queda registrado en el historial.':'El pago ya no estaba activo.';
+    });
+  };
+  const solicitarRetiro=async e=>{
+    e.preventDefault();if(!esAdmin||periodo?.meta?.cerradoEn)return;
+    const valor=Number(retiro.monto);
+    if(!Number.isSafeInteger(valor)||valor<=0||valor>1000000||retiro.motivo.trim().length<6){setToast('Indica un importe entero positivo y un motivo de al menos 6 caracteres.');return;}
+    await withOperation('retiro',async()=>{
+      const destino=push(ref(database,`aulas/${periodoId}/${salonId}/retiros`));
+      await set(destino,{monto:valor,motivo:retiro.motivo.trim(),estado:'solicitado',solicitadoPor:usuario.uid,creadoEn:Date.now()});
+      setRetiro({monto:'',motivo:''});return 'Solicitud de retiro publicada; el saldo aún no cambió.';
+    });
+  };
+  const resolverRetiro=async(r,estado)=>{
+    if(!esAdmin||periodo?.meta?.cerradoEn||r.estado!=='solicitado')return;
+    if(estado==='aprobado' && monto(r.monto)>resumen.saldo){setToast('Saldo insuficiente. No se puede aprobar este retiro.');return;}
+    if(!window.confirm(`¿${estado==='aprobado'?'Aprobar y descontar':'Rechazar'} la solicitud de ${pesos(r.monto)}?`))return;
+    await withOperation(`retiro:${r.id}`,async()=>{
+      // Transacción de toda la colección: evita aprobaciones simultáneas que dejen saldo negativo.
+      const ruta=`aulas/${periodoId}/${salonId}`;
+      const result=await runTransaction(ref(database,ruta),current=>{
+        if(!current||current.retiros?.[r.id]?.estado!=='solicitado')return;
+        const actual=resumenCaja(current.pagos||{},current.retiros||{},legadoTotal);
+        if(estado==='aprobado'&&monto(r.monto)>actual.saldo)return;
+        current.retiros[r.id]={...current.retiros[r.id],estado,respondidoPor:usuario.uid,respondidoEn:Date.now()};
+        return current;
+      },{applyLocally:false});
+      return result.committed?`Retiro ${estado}. ${estado==='aprobado'?'El saldo se actualizó automáticamente.':'No se descontó dinero.'}`:'La solicitud ya cambió o no hay saldo suficiente.';
+    });
+  };
+  const cerrarCiclo=async()=>{
+    if(!esAdmin||!periodo?.meta||periodo?.meta?.cerradoEn)return;
+    const actual=semanaPeriodo(periodo.meta);
+    if(!window.confirm(`¿Cerrar el ciclo ${periodoId} al terminar la semana ${actual}? Se conservarán sus pagos, pero se bloquearán nuevos registros en la aplicación. Comprueba antes que no existan solicitudes de retiro pendientes en ningún salón.`))return;
+    await withOperation('cierre',async()=>{
+      const r=await runTransaction(ref(database,`periodos/${periodoId}/meta`),meta=>{
+        if(!meta||meta.cerradoEn)return;
+        return {...meta,cerradoEn:Date.now(),semanaCierre:semanaPeriodo(meta)};
+      },{applyLocally:false});
+      return r.committed?'Ciclo archivado. Los historiales y saldos permanecen disponibles.':'El ciclo ya estaba cerrado.';
+    });
+  };
+  const permitirAvisos=async()=>{
+    if(typeof Notification==='undefined'){setToast('Este navegador no permite notificaciones locales. Los avisos siguen disponibles dentro de la app.');return;}
+    const permiso=await Notification.requestPermission();
+    setNotificaciones(permiso==='granted');
+    setToast(permiso==='granted'?'Avisos activados mientras la aplicación esté abierta.':'Puedes consultar las solicitudes y retiros en la sección Avisos.');
+  };
+  const instalar=async()=>{
+    if(instalarEvento){try{await instalarEvento.prompt();await instalarEvento.userChoice;}catch{/* instrucciones manuales */}}
+    else setModalInstalar(true);
   };
 
-  const submitAdmin = async (e) => {
-    e.preventDefault();
-    setAuthError('');
-    setDetallePermiso('');
-    setAuthBusy(true);
-    try {
-      const credencial = await signInWithEmailAndPassword(auth, correo.trim(), contrasena);
-      // Aseguramos un token actualizado antes de repetir la suscripción.
-      await credencial.user.getIdToken(true);
-      setUidParaAutorizar(credencial.user.uid);
-      setContrasena('');
-      // El listener de onAuthStateChanged/onValue valida el permiso sin
-      // cerrar automáticamente la sesión ni confiar en el estado visual.
-    } catch (error) {
-      console.error('No se pudo iniciar sesión:', error?.code || error);
-      setAuthError(friendlyAuthError(error));
-    } finally {
-      setAuthBusy(false);
-    }
-  };
-
-  const reintentarPermiso = async () => {
-    if (!auth.currentUser || revisandoPermiso) return;
-    setRevisandoPermiso(true);
-    setValidandoAdmin(true);
-    setAuthError('');
-    try {
-      await auth.currentUser.getIdToken(true);
-      // Reactiva el listener para obtener una comprobación nueva del servidor.
-      setRevisionPermiso((actual) => actual + 1);
-    } catch (error) {
-      console.error('No se pudo actualizar la sesión:', error);
-      setAuthError('No se pudo renovar la sesión. Comprueba tu conexión.');
-      setValidandoAdmin(false);
-    } finally {
-      setRevisandoPermiso(false);
-    }
-  };
-
-  const copiarUid = async () => {
-    if (!uidParaAutorizar) return;
-    try {
-      await navigator.clipboard.writeText(uidParaAutorizar);
-      setMensaje('UID copiado. Pégalo en Firebase → Realtime Database → adminUids.');
-    } catch {
-      setMensaje('Selecciona el UID mostrado en pantalla y cópialo manualmente.');
-    }
-  };
-
-  const resetPassword = async () => {
-    if (!correo.trim()) { setAuthError('Primero escribe tu correo electrónico.'); return; }
-    setAuthBusy(true);
-    try {
-      await sendPasswordResetEmail(auth, correo.trim());
-      setAuthError('');
-      setMensaje('Si la cuenta existe, recibirás un correo para restablecer tu contraseña.');
-    } catch (error) {
-      setAuthError(friendlyAuthError(error));
-    } finally { setAuthBusy(false); }
-  };
-
-  const cerrarSesion = async () => {
-    try { await signOut(auth); setAdmin(false); setMensaje('Sesión cerrada.'); }
-    catch { setMensaje('No se pudo cerrar la sesión.'); }
-  };
-
-  const changePayment = async (name, amount) => {
-    if (!admin || operacion) return;
-    setOperacion(name);
-    try {
-      const paymentRef = ref(database, `ahorro/integrantes/${name}/pagos`);
-      const result = await runTransaction(paymentRef, (current) => {
-        const actual = Math.max(0, Number(current) || 0);
-        return Math.max(0, actual + amount);
-      }, { applyLocally: false });
-      if (!result.committed) throw new Error('Operación no confirmada');
-      setMensaje(`Aportación ${amount > 0 ? 'registrada' : 'retirada'} para ${name}: ${currency(CUOTA_GRUPAL)} Grupal y ${currency(CUOTA_CARRERA)} Carrera.`);
-    } catch (error) {
-      console.error('Error al actualizar el pago:', error);
-      setMensaje('No se pudo guardar el pago. Verifica tus permisos de Firebase.');
-    } finally { setOperacion(''); }
-  };
-
-  const seedMembers = async () => {
-    if (!admin || datosInicializados || operacion) return;
-    setOperacion('inicializar');
-    try {
-      const result = await runTransaction(ref(database, 'ahorro'), (current) => {
-        if (current !== null) return;
-        const list = {};
-        INTEGRANTES_INICIALES.forEach((name) => { list[name] = { pagos: 0 }; });
-        return { semana: semanaActualMexico(), integrantes: list };
-      }, { applyLocally: false });
-      setMensaje(result.committed ? 'Lista de integrantes creada correctamente.' : 'La lista ya existe; no se modificaron los datos.');
-    } catch (error) {
-      console.error('Error al inicializar:', error);
-      setMensaje('No se pudo preparar la lista. Comprueba las reglas de Firebase.');
-    } finally { setOperacion(''); }
-  };
-
-  const installApp = async () => {
-    if (!installEvent) { setInstallOpen(true); return; }
-    try {
-      await installEvent.prompt();
-      await installEvent.userChoice;
-      setInstallEvent(null);
-    } catch { setInstallOpen(true); }
-  };
-
-  return (
-    <div className="app-shell">
-      <div className="background-orb background-orb-one"/><div className="background-orb background-orb-two"/>
-      <header className="site-header">
-        <div className="header-inner">
-          <a className="brand" href="#inicio" aria-label="Ir al inicio de Ahorro Grupal">
-            <img src="/icons/cerdito-192.png" alt="" width="43" height="43"/>
-            <span className="brand-text"><strong>Ahorro<span>Grupal</span></strong><small>INGENIERÍA INDUSTRIAL</small></span>
-          </a>
-          <nav className={`top-nav ${mobileMenu ? 'nav-open' : ''}`} aria-label="Navegación principal">
-            <a className="nav-active" href="#inicio" onClick={() => setMobileMenu(false)}>Resumen</a>
-            <a href="#integrantes" onClick={() => setMobileMenu(false)}>Integrantes</a>
-            <button type="button" onClick={() => { setInstallOpen(true); setMobileMenu(false); }}><Download size={16}/> Instalar app</button>
-          </nav>
-          <div className="header-actions">
-            <span className={`connection-pill ${online ? '' : 'is-offline'}`}><span/>{online ? 'En línea' : 'Sin conexión'}</span>
-            <button type="button" className={`header-admin ${admin ? 'header-admin-on' : ''}`} onClick={() => admin ? cerrarSesion() : setAdminOpen(true)}>
-              {admin ? <LogOut size={17}/> : <LockKeyhole size={17}/>}<span>{admin ? 'Salir de admin' : 'Administración'}</span>
-            </button>
-            <button type="button" className="mobile-menu icon-button" onClick={() => setMobileMenu(!mobileMenu)} aria-label={mobileMenu ? 'Cerrar menú' : 'Abrir menú'}>{mobileMenu ? <X size={21}/> : <Menu size={21}/>}</button>
-          </div>
+  return <div className="ag-root">
+    <div className="ag-wrap">
+      <header className="ag-header">
+        <div className="ag-brand"><img src="/icons/cerdito-192.png" alt="Cerdito de Ahorro Grupal"/><div><strong>Ahorro<span>Grupal</span></strong><small>Ingeniería Industrial</small></div></div>
+        <div className="ag-header-actions">
+          {esAdmin ? <span className="ag-admin-pill"><ShieldCheck size={16}/> Administrador</span> : <button className="ag-icon" type="button" title="Acceso administrativo" onClick={()=>setLoginOpen(true)}><LockKeyhole size={21}/></button>}
+          {usuario&&<button className="ag-icon" type="button" title="Cerrar sesión" onClick={()=>signOut(auth)}><LogOut size={19}/></button>}
+          <button className="ag-icon" type="button" title="Menú" onClick={()=>setMostrarMenu(!mostrarMenu)}><Menu size={22}/></button>
         </div>
       </header>
-
-      <main className="main-content" id="inicio">
-        <section className="welcome-row">
-          <div className="week-pill" title={`Cambio automático los lunes a las 00:00, hora de Ciudad de México. Próximo: ${proximoLunesMexico()}`}><CalendarDays size={19}/><span>Semana actual</span><strong>{semana.toString().padStart(2, '0')}</strong></div>
+      {mostrarMenu&&<nav className="ag-menu"><button onClick={()=>{setVista('pagos');setMostrarMenu(false);}}>Aportaciones</button><button onClick={()=>{setVista('avisos');setMostrarMenu(false);}}>Avisos y retiros</button><button onClick={()=>{setVista('profesores');setMostrarMenu(false);}}>Profesores</button><button onClick={()=>{setVista('gestion');setMostrarMenu(false);}}>Ciclos y grupos</button><button onClick={instalar}>Instalar app</button></nav>}
+      {!esAdmin ? <main className="ag-main">
+        <section className="ag-panel">
+          <div className="ag-panel-heading"><h2><LockKeyhole size={19}/> Acceso protegido</h2></div>
+          <p className="ag-muted">La consulta de salones, listas y pagos requiere iniciar sesión como administrador autorizado. La gestión de responsables por salón se habilitará en el siguiente bloque.</p>
+          <SmallButton variant="primary" onClick={()=>setLoginOpen(true)}><LockKeyhole size={17}/> {usuario ? 'Comprobar o cambiar cuenta' : 'Iniciar sesión'}</SmallButton>
+          {usuario && <p className="ag-muted">Si tu cuenta no obtiene acceso, verifica su autorización en Firebase. Puedes cerrar sesión desde el icono superior.</p>}
         </section>
-
-        {!online && <div className="alert-info"><CloudOff size={18}/> Estás sin conexión. Puedes abrir la app instalada, pero los datos y pagos requieren internet.</div>}
-        {dbError && <div className="alert-error"><AlertTriangle size={18}/> {dbError}</div>}
-        {!cargando && !datosInicializados && !dbError && <div className="alert-info"><Info size={18}/> Todavía no existe la lista de aportaciones en Firebase. {admin ? 'Puedes crearla con el botón que aparece abajo.' : 'Un administrador debe prepararla.'}</div>}
-
-        <section className="dashboard-grid split-dashboard" aria-label="Totales independientes de los dos fondos">
-          <BalanceFund tipo="grupal" etiqueta="TOTAL AHORRO GRUPAL" icon={Wallet}
-            total={stats.grupal.total} esperado={stats.grupal.esperado} pendiente={stats.grupal.pendiente}
-            porcentaje={stats.porcentaje} semana={semana} cargando={cargando}/>
-          <BalanceFund tipo="carrera" etiqueta="TOTAL AHORRO CARRERA" icon={GraduationCap}
-            total={stats.carrera.total} esperado={stats.carrera.esperado} pendiente={stats.carrera.pendiente}
-            porcentaje={stats.porcentaje} semana={semana} cargando={cargando}/>
-          <div className="metrics-row">
-            <Metric icon={UsersRound} label="Integrantes" value={cargando ? '—' : miembros.length} sub="Personas del grupo" tone="blue"/>
-            <Metric icon={CheckCheck} label="Al corriente" value={cargando ? '—' : stats.alDia} sub="Semanas cubiertas" tone="purple"/>
-            <Metric icon={ArrowDownRight} label="Pendiente grupal" value={cargando ? '—' : currency(stats.grupal.pendiente)} sub="$10 por semana no aportada" tone="purple"/>
-            <Metric icon={ArrowDownRight} label="Pendiente carrera" value={cargando ? '—' : currency(stats.carrera.pendiente)} sub="$10 por semana no aportada" tone="blue"/>
-          </div>
-        </section>
-        <p className="split-explanation">Cada aportación semanal registrada se distribuye en <strong>{currency(CUOTA_GRUPAL)} Grupal</strong> y <strong>{currency(CUOTA_CARRERA)} Carrera</strong>. Los fondos se muestran por separado.</p>
-
-        <section className="members-section" id="integrantes">
-          <div className="section-heading"><div><p className="eyebrow">NUESTRO EQUIPO</p><h2>Estado de aportaciones <span className="count-circle">{miembros.length}</span></h2><p>Consulta tu progreso o encuentra a cualquier integrante.</p></div>{admin && <div className="admin-badge"><ShieldCheck size={16}/> Modo administrador</div>}</div>
-          <div className="list-toolbar"><label className="search-field"><Search size={19}/><input type="search" placeholder="Buscar integrante por nombre..." value={busqueda} onChange={(e) => setBusqueda(e.target.value)} aria-label="Buscar integrante"/>{busqueda && <button type="button" onClick={() => setBusqueda('')} aria-label="Limpiar búsqueda"><X size={17}/></button>}</label><div className="filter-tabs" role="group" aria-label="Filtrar integrantes"><button type="button" className={filtro === 'todos' ? 'selected' : ''} onClick={() => setFiltro('todos')}>Todos</button><button type="button" className={filtro === 'al-dia' ? 'selected' : ''} onClick={() => setFiltro('al-dia')}>Al corriente</button><button type="button" className={filtro === 'pendientes' ? 'selected' : ''} onClick={() => setFiltro('pendientes')}>Pendientes</button></div></div>
-          <div className="list-topline"><span><Filter size={15}/> {miembrosVisibles.length} {miembrosVisibles.length === 1 ? 'integrante' : 'integrantes'}</span><span><Pin size={14}/> Fija tu perfil para verlo primero</span></div>
-          {cargando ? <div className="loading-members"><RotateCw className="spinner" size={23}/> Consultando aportaciones...</div> : miembrosVisibles.length ? (
-            <div className="members-list">{miembrosVisibles.map((m) => <MemberCard key={m.name} name={m.name} pagos={m.pagos} semana={semana} pinned={pinned === m.name} onPin={togglePin} isAdmin={admin} onPayment={changePayment} busy={Boolean(operacion)}/>)}</div>
-          ) : <div className="empty-list"><Search size={30}/><strong>No encontramos integrantes</strong><p>{miembros.length ? 'Prueba con otro nombre o cambia el filtro.' : 'La lista aún no tiene registros.'}</p><button type="button" onClick={() => { setBusqueda(''); setFiltro('todos'); }}>Limpiar filtros</button></div>}
-        </section>
-
-        {admin && <section className="admin-panel"><div className="admin-panel-copy"><span><ShieldCheck size={18}/> HERRAMIENTAS ADMINISTRATIVAS</span><h3>Gestiona el progreso del grupo</h3><p>Cada botón + registra $10 en Grupal y $10 en Carrera; el botón − retira esas mismas dos partes. Los registros se guardan en Firebase.</p><p><CalendarDays size={16} style={{ verticalAlign: 'middle', marginRight: 6 }}/>Semana automática: lunes 00:00 (Ciudad de México). Próximo cambio: {proximoLunesMexico()}.</p></div><div className="admin-panel-actions">{!datosInicializados && <button type="button" className="secondary-action" disabled={Boolean(operacion)} onClick={seedMembers}><Plus size={17}/> Crear lista inicial</button>}<span className="primary-action" style={{ cursor: 'default', display: 'flex', alignItems: 'center', gap: 9 }}><CheckCircle2 size={18}/> Avance semanal automático activo</span></div></section>}
-
-        <footer className="site-footer"><div className="footer-brand"><img src="/icons/cerdito-192.png" width="31" height="31" alt=""/><div><b>AhorroGrupal</b><small>Ingeniería Industrial</small></div></div><span>Hecho para ahorrar juntos. • {new Date().getFullYear()}</span><button type="button" onClick={installApp}><Download size={16}/> {instalada ? 'App instalada' : 'Instalar aplicación'}</button></footer>
-      </main>
-
-      {mensaje && <div role="status" className="toast"><CheckCircle2 size={19}/>{mensaje}<button type="button" onClick={() => setMensaje('')} aria-label="Cerrar mensaje"><X size={15}/></button></div>}
-
-      {adminOpen && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setAdminOpen(false); }}>
-        <div className="modal" role="dialog" aria-modal="true" aria-labelledby="admin-modal-title">
-          <button type="button" className="modal-close" onClick={() => { setAdminOpen(false); setAuthError(''); }} aria-label="Cerrar"><X size={21}/></button>
-          {usuario && !admin && !validandoAdmin ? <><div className="modal-icon"><ShieldCheck size={27}/></div><h2 id="admin-modal-title">Verificación de permisos</h2><p>Tu cuenta inició sesión correctamente, pero Firebase todavía no confirmó el permiso administrativo.</p><div className="modal-warning">No vuelvas a crear tu usuario. Comprueba el resultado de lectura que aparece abajo.</div>{uidParaAutorizar && <div className="uid-debug"><span>UID exacto de tu cuenta:</span><code>{uidParaAutorizar}</code><button type="button" onClick={copiarUid}><Copy size={15}/> Copiar UID</button>{detallePermiso && <p>{detallePermiso}</p>}</div>}<button className="modal-submit" type="button" disabled={revisandoPermiso} onClick={reintentarPermiso}><RotateCw size={17}/> {revisandoPermiso ? 'Comprobando...' : 'Volver a comprobar el permiso'}</button><button className="forgot-password" type="button" onClick={cerrarSesion}>Cerrar sesión</button></> : <>
-            <div className="modal-icon"><LockKeyhole size={26}/></div><h2 id="admin-modal-title">Acceso administrativo</h2><p>Solo las personas autorizadas pueden registrar aportaciones.</p>
-            <form onSubmit={submitAdmin}><label htmlFor="admin-email">Correo electrónico</label><input id="admin-email" autoComplete="username" type="email" placeholder="tu-correo@ejemplo.com" required value={correo} onChange={(e) => setCorreo(e.target.value)}/><label htmlFor="admin-password">Contraseña</label><div className="password-field"><input id="admin-password" autoComplete="current-password" type={showPassword ? 'text' : 'password'} placeholder="Introduce tu contraseña" required value={contrasena} onChange={(e) => setContrasena(e.target.value)}/><button type="button" onClick={() => setShowPassword(!showPassword)} title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'} aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}>{showPassword ? <EyeOff size={19}/> : <Eye size={19}/>}</button></div>{authError && <div role="alert" className="form-error">{authError}</div>}<button disabled={authBusy || validandoAdmin} className="modal-submit" type="submit">{authBusy ? 'Verificando...' : <><ShieldCheck size={18}/> Entrar al panel</>}</button></form>{uidParaAutorizar && <div className="uid-debug"><span>UID exacto de tu cuenta:</span><code>{uidParaAutorizar}</code><button type="button" onClick={copiarUid}><Copy size={15}/> Copiar UID</button>{detallePermiso && <p>{detallePermiso}</p>}</div>}<button type="button" className="forgot-password" onClick={resetPassword} disabled={authBusy}>¿Olvidaste tu contraseña?</button>
-          </>}
+      </main> : <main className="ag-main">
+        {dbError&&<div className="ag-error"><AlertTriangle size={18}/> {dbError}</div>}
+        <div className="ag-intro"><div><span className="ag-kicker">CAJA DEL SALÓN · {periodo?.meta?.nombre||periodoId} {periodo?.meta?.cerradoEn?' · CICLO ARCHIVADO':''}</span><h1>Control de aportaciones</h1><p>Una caja independiente por salón · <strong>{pesos(cuotaSemanal)} por semana</strong>.</p></div><div className="ag-week-pill"><CalendarClock size={19}/> Semana {semanaActual}</div></div>
+        <div className="ag-selectors">
+          <label>Ciclo escolar<select value={periodoId} onChange={e=>cambiarPeriodo(e.target.value)}>{periodKeys.length ? periodKeys.map(k=><option key={k} value={k}>{periodos[k]?.meta?.nombre||k}</option>):<option value={defaultPeriod}>Sin listas importadas</option>}</select></label>
+          <label>Salón<select value={salonId} onChange={e=>cambiarSalon(e.target.value)}>{salones.length ? salones.map(k=><option key={k} value={k}>{periodo?.salones?.[k]?.nombre||`Salón ${k}`}</option>):<option value="507">Sin salones</option>}</select></label>
         </div>
-      </div>}
-
-      {installOpen && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setInstallOpen(false); }}><div className="modal install-modal" role="dialog" aria-modal="true" aria-labelledby="install-title"><button type="button" className="modal-close" onClick={() => setInstallOpen(false)} aria-label="Cerrar"><X size={21}/></button><img className="install-logo" src="/icons/cerdito-192.png" alt="Logotipo Ahorro Grupal"/><h2 id="install-title">Tu ahorro, siempre a la mano</h2><p>Instala Ahorro Grupal para abrirlo como una aplicación, sin buscar la dirección cada vez.</p>{instalada ? <div className="modal-warning">La aplicación ya está instalada en este dispositivo.</div> : <div className="install-instructions"><div><b>Android y computadora</b><span>En Chrome o Edge, usa el ícono de instalación en la barra de direcciones o el menú ⋮ → Instalar aplicación.</span></div><div><b>iPhone o iPad</b><span>Abre en Safari, toca Compartir y elige «Añadir a pantalla de inicio».</span></div></div>}{installEvent && !instalada && <button className="modal-submit" type="button" onClick={async () => { setInstallOpen(false); await installApp(); }}><Download size={18}/> Instalar ahora</button>}<small className="install-disclaimer">Requiere conexión para sincronizar aportaciones con Firebase.</small></div></div>}
+        <div className="ag-tabs" role="tablist" aria-label="Apartados"><button className={vista==='pagos'?'active':''} onClick={()=>setVista('pagos')}><Wallet size={17}/> Aportaciones</button><button className={vista==='avisos'?'active':''} onClick={()=>setVista('avisos')}><Bell size={17}/> Avisos {mensajesRetiro.some(r=>r.estado==='solicitado')&&<b className="ag-dot"/>}</button><button className={vista==='profesores'?'active':''} onClick={()=>setVista('profesores')}><GraduationCap size={17}/> Profesores</button><button className={vista==='gestion'?'active':''} onClick={()=>setVista('gestion')}><BookOpen size={17}/> Ciclos y salones</button></div>
+        {vista==='pagos'&&<>
+          <section className="ag-summary">
+            <div className="ag-balance"><div className="ag-balance-head"><Wallet size={19}/> <span>FONDO DEL SALÓN {salonId}</span></div><strong>{cargando?'—':pesos(resumen.saldo)}</strong><p>Saldo disponible de la caja</p><div className="ag-balance-bottom"><span>Ingresos registrados: <b>{pesos(resumen.recaudado)}</b></span><span>Retiros aprobados: <b>{pesos(resumen.retirado)}</b></span></div></div>
+            <div className="ag-stats"><div><CircleDollarSign size={21}/><strong>{pesos(cuotaSemanal)}</strong><span>Por semana</span></div><div><UsersRound size={21}/><strong>{cargando?'—':lista.length}</strong><span>Integrantes</span></div><div><CheckCircle2 size={21}/><strong>{vigenteParaRegistrar?pagaron:'—'}</strong><span>Pagaron esta selección</span></div></div>
+          </section>
+          {periodoId===defaultPeriod&&salonId==='507'&&<div className="ag-note"><History size={18}/> Las aportaciones del sistema anterior se incluyen en los ingresos, sin inventar la fecha individual de esos pagos. El registro semanal detallado comienza en la semana {datos?.meta?.inicioDetalle||'indicada al importar'}.</div>}
+          {!datos?.meta && !cargando&&<div className="ag-empty"><BookOpen size={31}/><h3>Este salón todavía no está configurado</h3><p>Un administrador debe importar la lista del Excel o crear un salón en «Ciclos y salones».</p><SmallButton onClick={()=>setVista('gestion')}>Ver configuración</SmallButton></div>}
+          {!datos?.meta && periodoId===defaultPeriod && salonId==='507' && lista.length>0 && <Panel title="Historial anterior (sin fechas individuales)" icon={History}><p className="ag-muted">Estos importes siguen leyéndose de la base anterior, sin modificar ni asignar semanas inventadas.</p><div className="ag-timeline">{lista.map(e=><div className="ag-timeline-row" key={e.id}><span className="ag-avatar" aria-hidden="true"><UserRound size={22} strokeWidth={2.2}/></span><div><strong>{e.nombre}</strong><small>{Math.max(0,Number(legacy[e.aliasLegado]?.pagos)||0)} aportaciones anteriores</small></div><b>{pesos(Math.max(0,Number(legacy[e.aliasLegado]?.pagos)||0)*20)}</b></div>)}</div></Panel>}
+          {datos?.meta&&<Panel title="Registro semanal" icon={CalendarClock} action={<div className="ag-week-select"><button type="button" onClick={()=>setSemanaElegida(Math.max(1,semana-1))} disabled={semana<=1}>‹</button><select value={semana} onChange={e=>setSemanaElegida(Number(e.target.value))}>{Array.from({length:Math.max(semanaActual,1)},(_,i)=>i+1).reverse().map(n=><option key={n} value={n}>Semana {n}</option>)}</select><button type="button" onClick={()=>setSemanaElegida(Math.min(semanaActual,semana+1))} disabled={semana>=semanaActual}>›</button></div>}>
+            <div className="ag-toolbar"><label className="ag-search"><Search size={17}/><input placeholder="Buscar por nombre o control..." value={search} onChange={e=>setSearch(e.target.value)}/></label><div className="ag-filters"><button className={filtro==='todos'?'active':''} onClick={()=>setFiltro('todos')}>Todos</button><button className={filtro==='pagado'?'active':''} onClick={()=>setFiltro('pagado')}>Pagaron</button><button className={filtro==='pendiente'?'active':''} onClick={()=>setFiltro('pendiente')}>Pendientes</button></div></div>
+            {!vigenteParaRegistrar&&<div className="ag-note"><History size={16}/> Esta semana corresponde al historial anterior o a un periodo sin registros detallados. No se muestran supuestos adeudos.</div>}
+            <div className="ag-student-list">{visible.map(e=>{const estado=estadoAlumno(e);return <article className="ag-student" key={e.id}><span className="ag-avatar" aria-hidden="true"><UserRound size={22} strokeWidth={2.2}/></span><div className="ag-student-info"><strong>{e.nombre}</strong><small>{e.control?`Control ${e.control} · `:''}Semana {semana}</small></div><span className={`ag-status ag-status-${estado}`}>{estado==='pagado'?<><Check size={14}/> Pagó</>:estado==='pendiente'?'Pendiente':'Sin desglose'}</span>{esAdmin&&vigenteParaRegistrar&&!periodo?.meta?.cerradoEn&&<div className="ag-pay-actions">{estado==='pagado'?<button title="Anular este pago (con registro de corrección)" disabled={!!operacion} onClick={()=>anularPago(e)}><Minus size={17}/></button>:<button title={`Registrar ${pesos(cuotaSemanal)} esta semana`} disabled={!!operacion} onClick={()=>registrarPago(e)}><Plus size={18}/></button>}</div>}</article>;})}{!visible.length&&<div className="ag-empty-small">No hay integrantes para este filtro.</div>}</div>
+            <div className="ag-list-foot">{vigenteParaRegistrar?`${pagaron} pagos registrados · ${pendientes} pendientes de esta semana`:'Sin desglose semanal para esta selección'}</div>
+          </Panel>}
+          {datos?.meta&&<Panel title="Historial de aportaciones" icon={History}><p className="ag-muted">Movimientos registrados por semana. Los importes del sistema anterior no tienen fecha individual.</p><div className="ag-timeline">{pagosHist.slice(0,100).map(p=><div className="ag-timeline-row" key={p.id}><span className={`ag-timeline-mark ${p.estado==='pagado'?'ok':'cancel'}`}>{p.estado==='pagado'?<Check size={16}/>:<X size={16}/>}</span><div><strong>{p.nombre||integrantes[p.estudianteId]?.nombre||'Integrante'}</strong><small>Semana {p.semana} · {fechaLarga(p.creadoEn)} {p.estado==='anulado'?'· Anulación':''}{p.motivo?` · ${p.motivo}`:''}</small></div><b>{p.estado==='pagado'?'+':'−'}{pesos(p.monto)}</b></div>)}{!pagosHist.length&&<p className="ag-muted">Todavía no hay pagos semanales detallados para este salón.</p>}</div></Panel>}
+        </>}
+        {vista==='avisos'&&<><Panel title="Avisos de movimientos y retiros" icon={BellRing} action={<SmallButton onClick={permitirAvisos}><Bell size={16}/> Permitir avisos</SmallButton>}><p className="ag-muted">Las solicitudes y los retiros aprobados se publican aquí para todos. Los avisos del dispositivo funcionan mientras la app está abierta; no son notificaciones push con la app cerrada.</p>{!datos?.meta?<div className="ag-empty-small">Selecciona un salón configurado.</div>:<div className="ag-timeline">{mensajesRetiro.map(r=><div key={r.id} className="ag-withdrawal"><div className="ag-withdrawal-head"><span className={`ag-status ag-status-${r.estado}`}>{r.estado==='solicitado'?'Solicitud de retiro':r.estado==='aprobado'?'Retiro aprobado':'Solicitud rechazada'}</span><strong>{pesos(r.monto)}</strong></div><p>{r.motivo}</p><small>{fechaLarga(r.creadoEn)} {r.respondidoEn?`· Resuelto ${fechaLarga(r.respondidoEn)}`:''}</small>{esAdmin&&!periodo?.meta?.cerradoEn&&r.estado==='solicitado'&&<div className="ag-withdrawal-buttons"><SmallButton disabled={!!operacion} onClick={()=>resolverRetiro(r,'aprobado')} variant="primary"><Check size={16}/> Aprobar y descontar</SmallButton><SmallButton disabled={!!operacion} onClick={()=>resolverRetiro(r,'rechazado')}>Rechazar</SmallButton></div>}</div>)}{!mensajesRetiro.length&&<p className="ag-muted">No existen avisos de retiro para este salón.</p>}</div>}</Panel>{esAdmin&&!periodo?.meta?.cerradoEn&&datos?.meta&&<Panel title="Solicitar retiro de la caja" icon={ArrowDownRight}><form className="ag-simple-form" onSubmit={solicitarRetiro}><label>Importe en pesos<input type="number" min="1" step="1" value={retiro.monto} onChange={e=>setRetiro({...retiro,monto:e.target.value})} placeholder="Ej. 200" required/></label><label>Motivo<input value={retiro.motivo} onChange={e=>setRetiro({...retiro,motivo:e.target.value})} placeholder="¿Para qué se solicita?" minLength={6} required/></label><SmallButton type="submit" variant="primary" disabled={!!operacion}><Plus size={17}/> Publicar solicitud</SmallButton></form><p className="ag-muted">Solicitar no descuenta dinero. El saldo se actualiza cuando se aprueba la solicitud.</p></Panel>}</>}
+        {vista==='profesores'&&<Panel title="Directorio de profesores" icon={GraduationCap}><p className="ag-muted">Profesores proporcionados para Ingeniería Industrial. No se incluyen en los cálculos de aportaciones.</p><div className="ag-prof-grid">{PROFESORES.map(n=><div key={n} className="ag-prof"><span className="ag-avatar"><GraduationCap size={20}/></span><strong>{n}</strong></div>)}</div></Panel>}
+        {vista==='gestion'&&<><Panel title="Ciclos escolares y salones" icon={BookOpen}><p className="ag-muted">Los ciclos se conservan por separado. Un ciclo nuevo empieza sin pagos ni retiros; no borra el anterior.</p>{esAdmin&&periodo?.meta&&!periodo?.meta?.cerradoEn&&<div className="ag-archive-action"><SmallButton disabled={!!operacion} onClick={cerrarCiclo}>Archivar ciclo al terminar la semana actual</SmallButton></div>}<div className="ag-period-grid">{periodKeys.map(id=><button className={periodoId===id?'active':''} key={id} onClick={()=>cambiarPeriodo(id)}><strong>{periodos[id]?.meta?.nombre||id}</strong><span>{Object.keys(periodos[id]?.salones||{}).length} salones</span></button>)}</div></Panel>{esAdmin?<><Panel title="Importar listas de salones (JSON)" icon={FileUp}><p className="ag-muted">Selecciona el archivo preparado en <code>datos_importacion/</code>. Se importan solo nombres y números de control, nunca CURP ni fechas de nacimiento. La importación NO reemplaza un salón ya existente.</p><input className="ag-file" type="file" accept=".json,application/json" onChange={onArchivo}/>{importInfo&&<div className="ag-confirm"><strong>{importFile?.name}</strong><p>{importFile?.salones} salones · {importFile?.total} estudiantes · ciclo {importInfo.periodo.id}</p><SmallButton variant="primary" disabled={!!operacion} onClick={importar}><FileUp size={17}/> Confirmar importación segura</SmallButton></div>}</Panel><Panel title="Crear ciclo para próximos años" icon={CalendarClock}><div className="ag-simple-form"><label>Identificador (ej. 2027-2028-A)<input value={nuevoPeriodo.id} onChange={e=>setNuevoPeriodo({...nuevoPeriodo,id:e.target.value.toUpperCase()})} placeholder="2027-2028-A"/></label><label>Lunes de inicio<input type="date" value={nuevoPeriodo.lunesBase} onChange={e=>setNuevoPeriodo({...nuevoPeriodo,lunesBase:e.target.value})}/></label><label>Primera semana<input type="number" min="1" step="1" value={nuevoPeriodo.semanaBase} onChange={e=>setNuevoPeriodo({...nuevoPeriodo,semanaBase:e.target.value})}/></label><SmallButton variant="primary" disabled={!!operacion} onClick={crearPeriodo}><Plus size={17}/> Crear ciclo vacío</SmallButton></div></Panel>{periodo&&<Panel title="Gestionar salón e integrantes" icon={UsersRound}><div className="ag-simple-form"><label>Nuevo salón<input value={nuevoSalon} onChange={e=>setNuevoSalon(e.target.value)} placeholder="Ej. 107"/></label><SmallButton disabled={!!operacion} onClick={crearSalon}><Plus size={17}/> Crear salón</SmallButton></div>{datos?.meta&&<div className="ag-simple-form"><label>Nombre del nuevo estudiante<input value={nuevoEstudiante.nombre} onChange={e=>setNuevoEstudiante({...nuevoEstudiante,nombre:e.target.value})} placeholder="Nombre completo"/></label><label>Número de control (opcional)<input value={nuevoEstudiante.control} onChange={e=>setNuevoEstudiante({...nuevoEstudiante,control:e.target.value})} placeholder="N.º de control"/></label><SmallButton disabled={!!operacion} onClick={agregarAlumno}><Plus size={17}/> Agregar estudiante</SmallButton></div>}</Panel>}</>:<div className="ag-note"><LockKeyhole size={17}/> Un administrador debe iniciar sesión para importar listas o crear nuevos ciclos escolares.</div>}</>}
+        <footer className="ag-footer"><div><img src="/icons/cerdito-192.png" alt="" width="32" height="32"/> AhorroGrupal · Ingeniería Industrial</div><button onClick={instalar}><Download size={17}/> {instalada?'App instalada':'Instalar app'}</button></footer>
+      </main>}
     </div>
-  );
+    {toast&&<div role="status" className="ag-toast">{toast}<button onClick={()=>setToast('')} aria-label="Cerrar"><X size={15}/></button></div>}
+    {loginOpen&&<div className="ag-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setLoginOpen(false);}}><div className="ag-modal" role="dialog" aria-modal="true" aria-label="Administración"><button className="ag-modal-close" onClick={()=>setLoginOpen(false)}><X size={20}/></button><div className="ag-modal-mark"><LockKeyhole size={26}/></div><h2>Acceso administrativo</h2>{usuario&&!esAdmin?<p>Sesión iniciada, pero el UID no está autorizado en <code>adminUids</code>. Revisa el permiso de la cuenta de Firebase.</p>:<p>Solo las cuentas autorizadas pueden registrar movimientos.</p>}<form onSubmit={signIn}><label>Correo electrónico<input type="email" autoComplete="username" required value={email} onChange={e=>setEmail(e.target.value)}/></label><label>Contraseña<div className="ag-password"><input type={seePassword?'text':'password'} autoComplete="current-password" required value={password} onChange={e=>setPassword(e.target.value)}/><button type="button" onClick={()=>setSeePassword(!seePassword)}>{seePassword?<EyeOff size={18}/>:<Eye size={18}/>}</button></div></label>{loginError&&<div className="ag-error">{loginError}</div>}<SmallButton type="submit" variant="primary" disabled={loginBusy}><ShieldCheck size={18}/> {loginBusy?'Verificando…':'Iniciar sesión'}</SmallButton></form><button className="ag-link" type="button" onClick={resetPassword}>¿Olvidaste tu contraseña?</button>{usuario&&!esAdmin&&<button className="ag-link" type="button" onClick={()=>signOut(auth)}>Cerrar sesión actual</button>}</div></div>}
+    {modalInstalar&&<div className="ag-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setModalInstalar(false);}}><div className="ag-modal" role="dialog" aria-modal="true" aria-label="Instalar aplicación"><button className="ag-modal-close" onClick={()=>setModalInstalar(false)}><X size={20}/></button><img src="/icons/cerdito-192.png" alt="Cerdito" width="80" height="80"/><h2>Instalar AhorroGrupal</h2><p>Android: menú de Chrome → Instalar app. iPhone: Safari → Compartir → Añadir a inicio. Computadora: opción Instalar en Chrome o Edge.</p></div></div>}
+  </div>;
 }
