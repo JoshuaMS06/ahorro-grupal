@@ -2,46 +2,89 @@
   "rules": {
     ".read": false,
     ".write": false,
-    "ahorro": {
-      ".read": true,
-      ".write": "auth != null && root.child('adminUids').child(auth.uid).val() === true",
-      "semana": {
-        ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() % 1 === 0"
+    "roles": {
+      "adminGeneralUid": {
+        ".read": "auth != null",
+        ".write": false
       },
-      "integrantes": {
-        "$integrante": {
-          "pagos": {
-            ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() % 1 === 0"
+      "porUsuario": {
+        ".read": "auth != null && root.child('roles/adminGeneralUid').val() === auth.uid",
+        ".write": "auth != null && root.child('roles/adminGeneralUid').val() === auth.uid",
+        "$uid": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".validate": "newData.hasChildren(['periodo','salon','plaza']) && newData.child('periodo').isString() && newData.child('salon').isString() && (newData.child('plaza').val() === '1' || newData.child('plaza').val() === '2')"
+        }
+      },
+      "responsables": {
+        ".read": "auth != null && root.child('roles/adminGeneralUid').val() === auth.uid",
+        ".write": "auth != null && root.child('roles/adminGeneralUid').val() === auth.uid",
+        "$periodo": {
+          "$salon": {
+            "$slot": {
+              ".validate": "($slot === '1' || $slot === '2') && newData.isString() && newData.val().matches(/^[A-Za-z0-9_-]{6,128}$/)"
+            }
           }
         }
       }
+    },
+    "periodos": {
+      ".read": "auth != null && (root.child('roles/adminGeneralUid').val() === auth.uid || root.child('roles/porUsuario').child(auth.uid).exists())",
+      "$periodo": {
+        "meta": {
+          ".write": "auth != null && root.child('roles/adminGeneralUid').val() === auth.uid && newData.exists()",
+          ".validate": "newData.hasChildren(['nombre','lunesBase','semanaBase','creadoEn']) && newData.child('nombre').isString() && newData.child('lunesBase').isString() && newData.child('semanaBase').isNumber() && newData.child('semanaBase').val() >= 1 && newData.child('creadoEn').isNumber()"
+        },
+        "salones": {
+          "$salon": {
+            ".write": "auth != null && root.child('roles/adminGeneralUid').val() === auth.uid && !data.exists() && newData.exists()",
+            ".validate": "newData.hasChildren(['nombre']) && newData.child('nombre').isString()"
+          }
+        }
+      }
+    },
+    "aulas": {
+      "$periodo": {
+        "$salon": {
+          ".read": "(auth != null && root.child('roles/adminGeneralUid').val() === auth.uid) || (auth != null && root.child('roles/porUsuario').child(auth.uid).child('periodo').val() === $periodo && root.child('roles/porUsuario').child(auth.uid).child('salon').val() === $salon && (root.child('roles/responsables').child($periodo).child($salon).child('1').val() === auth.uid || root.child('roles/responsables').child($periodo).child($salon).child('2').val() === auth.uid))",
+          "meta": {
+            ".write": "auth != null && root.child('roles/adminGeneralUid').val() === auth.uid && !data.exists() && newData.exists()",
+            ".validate": "newData.hasChildren(['nombre','inicioDetalle','cuotaSemanal','creadoEn']) && newData.child('nombre').isString() && newData.child('inicioDetalle').isNumber() && newData.child('inicioDetalle').val() >= 1 && newData.child('cuotaSemanal').isNumber() && (($salon === '507' && newData.child('cuotaSemanal').val() === 20) || ($salon !== '507' && newData.child('cuotaSemanal').val() === 10)) && newData.child('creadoEn').isNumber()"
+          },
+          "integrantes": {
+            ".write": "auth != null && root.child('roles/adminGeneralUid').val() === auth.uid && !data.exists() && newData.exists()",
+            "$estudiante": {
+              ".write": "auth != null && root.child('roles/adminGeneralUid').val() === auth.uid && !data.exists() && newData.exists()",
+              ".validate": "newData.hasChildren(['nombre']) && newData.child('nombre').isString() && newData.child('nombre').val().length >= 2 && newData.child('nombre').val().length <= 140"
+            }
+          },
+          "pagos": {
+            "$registro": {
+              ".write": "newData.exists() && ((auth != null && root.child('roles/adminGeneralUid').val() === auth.uid && !data.exists() && newData.child('estado').val() === 'pagado' && newData.child('registradoPor').val() === auth.uid) || ((auth != null && root.child('roles/porUsuario').child(auth.uid).child('periodo').val() === $periodo && root.child('roles/porUsuario').child(auth.uid).child('salon').val() === $salon && (root.child('roles/responsables').child($periodo).child($salon).child('1').val() === auth.uid || root.child('roles/responsables').child($periodo).child($salon).child('2').val() === auth.uid)) && !data.exists() && newData.child('estado').val() === 'pagado' && newData.child('registradoPor').val() === auth.uid) || (auth != null && root.child('roles/adminGeneralUid').val() === auth.uid && data.exists() && newData.child('estudianteId').val() === data.child('estudianteId').val() && newData.child('semana').val() === data.child('semana').val() && newData.child('monto').val() === data.child('monto').val() && ((data.child('estado').val() === 'pagado' && newData.child('estado').val() === 'anulado' && newData.child('anuladoPor').val() === auth.uid && newData.child('anuladoEn').isNumber() && newData.child('correcciones').val() === (data.child('correcciones').isNumber() ? data.child('correcciones').val() : 0) + 1) || (data.child('estado').val() === 'anulado' && newData.child('estado').val() === 'pagado' && newData.child('registradoPor').val() === auth.uid && newData.child('correcciones').val() === data.child('correcciones').val()))))",
+              ".validate": "newData.hasChildren(['estudianteId','semana','monto','estado','creadoEn','registradoPor','historial']) && newData.child('estudianteId').isString() && newData.child('semana').isNumber() && newData.child('semana').val() >= 1 && newData.child('semana').val() % 1 === 0 && newData.child('monto').isNumber() && newData.child('monto').val() === root.child('aulas').child($periodo).child($salon).child('meta').child('cuotaSemanal').val() && (newData.child('estado').val() === 'pagado' || newData.child('estado').val() === 'anulado') && newData.child('creadoEn').isNumber() && newData.child('registradoPor').isString() && newData.child('historial').exists() && root.child('aulas').child($periodo).child($salon).child('integrantes').child(newData.child('estudianteId').val()).exists()",
+              "historial": {
+                "$evento": {
+                  ".validate": "newData.hasChildren(['tipo','fecha','uid']) && (newData.child('tipo').val() === 'registro' || newData.child('tipo').val() === 'anulacion') && newData.child('fecha').isNumber() && newData.child('uid').isString() && (data.exists() ? (newData.child('tipo').val() === data.child('tipo').val() && newData.child('fecha').val() === data.child('fecha').val() && newData.child('uid').val() === data.child('uid').val() && newData.child('motivo').val() === data.child('motivo').val()) : newData.child('uid').val() === auth.uid)"
+                }
+              }
+            }
+          },
+          "retiros": {
+            "$retiro": {
+              ".write": "((auth != null && root.child('roles/adminGeneralUid').val() === auth.uid) || ((auth != null && root.child('roles/porUsuario').child(auth.uid).child('periodo').val() === $periodo && root.child('roles/porUsuario').child(auth.uid).child('salon').val() === $salon && (root.child('roles/responsables').child($periodo).child($salon).child('1').val() === auth.uid || root.child('roles/responsables').child($periodo).child($salon).child('2').val() === auth.uid)) && newData.child('solicitadoPor').val() === auth.uid)) && !data.exists() && newData.exists() && newData.child('estado').val() === 'solicitado'",
+              ".validate": "newData.hasChildren(['monto','motivo','estado','creadoEn','solicitadoPor']) && newData.child('monto').isNumber() && newData.child('monto').val() > 0 && newData.child('monto').val() <= 1000000 && newData.child('monto').val() % 1 === 0 && newData.child('motivo').isString() && newData.child('motivo').val().length >= 6 && newData.child('estado').val() === 'solicitado' && newData.child('creadoEn').isNumber() && newData.child('solicitadoPor').val() === auth.uid"
+            }
+          }
+        }
+      }
+    },
+    "ahorro": {
+      ".read": "(auth != null && root.child('roles/adminGeneralUid').val() === auth.uid) || (auth != null && root.child('roles/porUsuario').child(auth.uid).child('periodo').val() === '2026-2027-A' && root.child('roles/porUsuario').child(auth.uid).child('salon').val() === '507' && (root.child('roles/responsables/2026-2027-A/507/1').val() === auth.uid || root.child('roles/responsables/2026-2027-A/507/2').val() === auth.uid))",
+      ".write": false
     },
     "adminUids": {
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
         ".write": false
-      }
-    },
-    "periodos": {
-      ".read": "auth != null && root.child('adminUids').child(auth.uid).val() === true",
-      ".write": "auth != null && root.child('adminUids').child(auth.uid).val() === true"
-    },
-    "aulas": {
-      ".read": "auth != null && root.child('adminUids').child(auth.uid).val() === true",
-      "$periodo": {
-        "$salon": {
-          ".write": "auth != null && root.child('adminUids').child(auth.uid).val() === true",
-          "pagos": {
-            "$registro": {
-              ".validate": "newData.hasChildren(['estudianteId','semana','monto','estado','creadoEn']) && (((($salon === '507') && newData.child('monto').val() === 20) || (($salon !== '507') && newData.child('monto').val() === 10)) || (data.exists() && newData.child('monto').val() === data.child('monto').val())) && newData.child('semana').isNumber() && newData.child('semana').val() >= 1 && (newData.child('estado').val() === 'pagado' || newData.child('estado').val() === 'anulado')"
-            }
-          },
-          "retiros": {
-            "$retiro": {
-              ".validate": "newData.hasChildren(['monto','motivo','estado','creadoEn']) && newData.child('monto').isNumber() && newData.child('monto').val() > 0 && newData.child('monto').val() <= 1000000 && (newData.child('estado').val() === 'solicitado' || newData.child('estado').val() === 'aprobado' || newData.child('estado').val() === 'rechazado')"
-            }
-          }
-        }
       }
     }
   }

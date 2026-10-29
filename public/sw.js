@@ -1,5 +1,5 @@
 /* Caché del armazón PWA; nunca almacena datos de Firebase ni contraseñas. */
-const VERSION = 'ahorro-shell-v11-private-read-20261028';
+const VERSION = 'ahorro-shell-v12-roles-emulator-20261028';
 const SHELL = ['/', '/manifest.webmanifest', '/icons/cerdito-192.png', '/icons/cerdito-512.png'];
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(VERSION).then(async (cache) => {

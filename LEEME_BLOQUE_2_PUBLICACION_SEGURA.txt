@@ -1,0 +1,69 @@
+AHORROGRUPAL — BLOQUE 2, REGLAS REFORZADAS Y RETIROS SEGUROS
+===========================================================
+
+IMPORTANTE: todavía NO está publicado. Este paquete está preparado
+para comprobar localmente y después hacer una publicación controlada.
+
+CONFIGURACIÓN PREVIA REAL
+- Firebase Realtime Database: proyecto ahorro-grupal-industrial.
+- roles/adminGeneralUid debe contener el UID que el usuario confirmó.
+- Nunca sobrescribir la base de datos con JSON ni borrar /ahorro,
+  /aulas, /periodos, /roles ni /adminUids.
+- Conservar respaldo de datos y de reglas publicadas.
+- En Vercel debe existir FIREBASE_SERVICE_ACCOUNT_JSON, que ya se utiliza
+  para el cron semanal. No se copia ni se guarda en el repositorio.
+
+QUÉ CAMBIÓ
+1. firebase-database.rules.json contiene TODAS las reglas completas,
+   sin permiso de escritura general sobre el salón ni sobre los pagos
+   antiguos. Solo permite crear y administrar rutas específicas.
+2. La aplicación continúa permitiendo que el administrador general
+   gestione integrantes, aportaciones y cuentas responsables.
+3. Los responsables solo pueden registrar pagos de su salón y pedir
+   retiros; no pueden eliminar pagos existentes o aprobar retiros.
+4. El administrador general resuelve los retiros mediante una función
+   privada de Vercel: /api/resolver-retiro. La función verifica el token
+   Firebase, consulta el UID general y utiliza una transacción atómica
+   sobre el salón para evitar sobregiros simultáneos.
+5. La ruta /ahorro con datos legados queda de solo lectura para los
+   usuarios de la aplicación. El cron de semanas usa credenciales de
+   servicio y no depende de los permisos de cliente.
+
+PASO 1 (SOLO LOCAL)
+- Extraer el ZIP SOBRE C:\Proyectos\AppAhorro, conservando .git.
+- No se incluye package-lock.json para NO reemplazar el que ya tienes:
+  al ejecutar npm install se actualizará para las dependencias nuevas.
+- Abrir PowerShell en C:\Proyectos\AppAhorro.
+- Ejecutar:
+    npm install
+    npm audit
+    npm test
+    npm run build
+- No hacer todavía git push ni Publish en Firebase hasta verificar.
+
+PASO 2 (REVISIÓN DE SEGURIDAD, ANTES DE PUBLICAR)
+- Comparar reglas actuales con las nuevas y guardar ambas.
+- Validar reglas Firebase en un entorno seguro, preferiblemente
+  Emulator Suite, incluyendo autorizaciones y denegaciones.
+- Esta entrega incluye tests-emulator/roles.rules.test.mjs y la
+  dependencia @firebase/rules-unit-testing en package.json.
+- Si Vercel no tiene FIREBASE_SERVICE_ACCOUNT_JSON configurada, el
+  nuevo endpoint de retiros no funcionará; no se debe publicar sin ella.
+
+PASO 3 (PUBLICACIÓN CONTROLADA, SOLO DESPUÉS DE APROBACIÓN)
+- Publicar reglas completas de firebase-database.rules.json.
+- Crear commit y git push origin main para que Vercel despliegue código
+  compatible. Durante el intervalo entre ambos pasos la app antigua
+  puede quedar sin permiso de escritura, sin pérdida de datos.
+- Verificar Ready y autenticación de admin general y responsables.
+- Probar funcionalidades con una prueba autorizada no financiera.
+- No usar pagos/retiros ficticios en producción.
+
+LIMITACIONES
+- La nueva protección de reglas previene eliminaciones directas
+  de registros de estudiantes, pagos y retiros desde el navegador.
+- La auditoría histórica del admin no es absolutamente inmutable:
+  para alta garantía habría que implementar un ledger append-only en
+  backend (trabajo futuro). No exponer la cuenta de servicio.
+- El servidor de retiros aún requiere prueba de integración real en
+  Vercel. No se validó aquí contra Firebase de producción.

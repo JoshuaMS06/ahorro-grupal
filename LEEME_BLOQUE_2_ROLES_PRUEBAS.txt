@@ -1,0 +1,41 @@
+AHORROGRUPAL · BLOQUE 2 (SOLO PRUEBAS, NO PUBLICAR)
+
+QUÉ INCLUYE
+- Un único administrador general definido en roles/adminGeneralUid.
+- Dos plazas fijas por salón y ciclo escolar.
+- Cada responsable consulta exclusivamente su salón, registra pagos semanales y solicita retiros.
+- Solo el administrador general puede aprobar/rechazar retiros, corregir pagos, importar listas, crear periodos y cambiar integrantes.
+- Se conserva el historial anterior y la cuota $20 del 507, $10 en los otros salones.
+- No se publica ni modifica Firebase real automáticamente.
+
+SEGURIDAD
+- Las reglas NUEVAS de firebase-database.rules.json se deben probar en el emulador ANTES de publicarlas en la base real.
+- No uses como test los datos personales reales de los alumnos.
+- Conserva las reglas actuales y respalda Firebase antes de cualquier migración.
+- Para el administrador general elige un SOLO UID existente en Firebase Authentication. NO elijas por defecto al segundo usuario: verifica quién será el administrador general.
+- No copies claves privadas o contraseñas al código, GitHub o el chat.
+
+PRUEBAS LOCALES EN WINDOWS / VS CODE
+1. Extrae este ZIP en una COPIA de AppAhorro, NO sobre el proyecto de producción.
+2. Abre PowerShell en esa copia; ejecuta npm install, npm test, npm run build.
+3. Instala Firebase CLI si hace falta: npm install -g firebase-tools
+4. Inicia la suite local: firebase emulators:start --project demo-ahorro-grupal --only database,auth
+5. Para la interfaz local, ejecuta npm run dev en otra terminal. En desarrollo se conecta automáticamente a los emuladores; jamás a Firebase de producción por defecto.
+6. Visita http://127.0.0.1:4000 para crear cuentas/datos FICTICIOS en los emuladores; crea un nodo roles con adminGeneralUid establecido al UID ficticio del admin, un periodo y salón de muestra.
+7. Prueba el acceso como admin y como responsable de otro salón. El responsable NO debe poder leer ni escribir otro salón.
+
+PRUEBAS AUTOMÁTICAS DE REGLAS (OPCIONAL)
+En la copia de trabajo: npm install --no-save @firebase/rules-unit-testing
+Con Firebase CLI disponible:
+firebase emulators:exec --project demo-ahorro-grupal --only database "node --test tests-emulator/*.test.mjs"
+Esto debe aprobar sin usar una cuenta real ni tocar la nube.
+
+ANTES DE PRODUCCIÓN (NO HACER TODAVÍA)
+1. Preparar respaldo y plan de reversión.
+2. En Realtime Database /Data crear roles/adminGeneralUid = UID del único administrador general (tipo String), SIN ESPACIOS.
+3. Publicar después de validar las nuevas reglas. El nodo adminUids antiguo permanece como legado pero ya no concede acceso global.
+4. Crear en Firebase Authentication los responsables de cada salón. Desde la nueva pestaña Responsables, asignarlos por UID (dos plazas por salón).
+5. Verificar con dos cuentas de pruebas diferentes, incluyendo lectura denegada de otros salones y prohibición de aprobar retiros.
+6. SOLO AL FINAL publicar en Vercel.
+
+ATENCIÓN: En la versión actual de producción las reglas aún son anteriores. Abrir esta versión local con VITE_USE_FIREBASE_EMULATORS=false contra la base real provocaría permisos denegados. No lo hagas.

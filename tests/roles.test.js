@@ -1,0 +1,11 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {rolDeUsuario,esResponsableDeSalon,validarAsignacion,prepararCambiosResponsable} from '../lib/roles.js';
+test('un UID general se identifica sin acceso de responsable',()=>assert.deepEqual(rolDeUsuario('admin','admin',null),{tipo:'general'}));
+test('un responsable ve solo su grupo y ciclo',()=>{const r={periodo:'2026-2027-A',salon:'107',plaza:'1'};assert.equal(esResponsableDeSalon(r,'2026-2027-A','107'),true);assert.equal(esResponsableDeSalon(r,'2026-2027-A','307'),false);assert.equal(esResponsableDeSalon(r,'2027-2028-A','107'),false);});
+test('solo pueden existir plazas 1 y 2',()=>assert.throws(()=>validarAsignacion({periodo:'2026-2027-A',salon:'107',plaza:'3',uid:'abcdef12',adminUid:'super'})));
+test('un mismo usuario no ocupa dos plazas',()=>assert.throws(()=>validarAsignacion({periodo:'2026-2027-A',salon:'107',plaza:'2',uid:'abcdef12',adminUid:'super',responsables:{'2026-2027-A':{'107':{'1':'abcdef12'}}}})));
+test('el admin general no puede asignarse como responsable',()=>assert.throws(()=>validarAsignacion({periodo:'2026-2027-A',salon:'107',plaza:'1',uid:'abcdef12',adminUid:'abcdef12'})));
+test('no se puede asignar un UID ya ocupado',()=>assert.throws(()=>validarAsignacion({periodo:'2026-2027-A',salon:'307',plaza:'1',uid:'abcdef12',adminUid:'super',indices:{abcdef12:{periodo:'2026-2027-A',salon:'107',plaza:'1'}}})));
+test('las asignaciones son atómicas en las dos rutas y revocan al anterior',()=>{const data=prepararCambiosResponsable({periodo:'2026-2027-A',salon:'107',plaza:'1',uid:'nuevoXYZ789',anterior:'anteriorXYZ'});assert.equal(data['roles/responsables/2026-2027-A/107/1'],'nuevoXYZ789');assert.equal(data['roles/porUsuario/anteriorXYZ'],null);assert.deepEqual(data['roles/porUsuario/nuevoXYZ789'],{periodo:'2026-2027-A',salon:'107',plaza:'1'});});
+test('revocar una plaza no toca aportaciones',()=>{const data=prepararCambiosResponsable({periodo:'2026-2027-A',salon:'507',plaza:'2',uid:'',anterior:'anteriorXYZ'});assert.deepEqual(Object.keys(data).sort(),['roles/porUsuario/anteriorXYZ','roles/responsables/2026-2027-A/507/2'].sort());});
