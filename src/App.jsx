@@ -242,6 +242,7 @@ export default function App() {
               if(snap.exists())(salonesPrueba[p] ||= {})[salon]=snap.val();
             }
           }
+          if(periodoId==='2026-2027-A'&&!ahorroNuevoActivo)throw Error('El nuevo ahorro no está activado; el saldo anterior no se muestra.');
           const resumenPrueba=ahorroNuevoActivo?resumirAhorroReiniciado(salonesPrueba,periodos):resumirFondos(salonesPrueba,{});
           informe=informeVisibleSegunRol(resumenPrueba,{tipo:esAdminGeneral?'general':'responsable'},generacionId);
         }else{
@@ -496,6 +497,25 @@ export default function App() {
       return accion==='iniciar'?`Vacaciones iniciadas. Semana ${body.semana} congelada.`:'Clases reanudadas. La siguiente semana comenzará el próximo lunes.';
     });
   };
+  const activarReinicioSeguro=async()=>{
+    if(!esAdminGeneral||!usuario||periodoId!=='2026-2027-A'||ahorroNuevoActivo)return;
+    await withOperation('activar-reinicio',async()=>{
+      const token=await usuario.getIdToken();
+      const headers={Authorization:`Bearer ${token}`};
+      const previa=await fetch('/api/activar-reinicio',{headers,cache:'no-store'});
+      const informe=await previa.json().catch(()=>({}));
+      if(!previa.ok)throw Error(informe.error||`No pasó la revisión del reinicio (HTTP ${previa.status}).`);
+      const d=informe.diagnostico;
+      const detalles=d.salones.map(s=>`${s.salon}: ${s.integrantes} estudiantes, ${pesos(s.cuotaSemanal)} por semana`).join('\n');
+      if(!window.confirm(`REINICIO CONTABLE DE INGENIERÍA INDUSTRIAL\n\n${detalles}\n\n${d.totalIntegrantes} estudiantes en total.\nLos pagos y retiros históricos permanecerán guardados, pero dejarán de contar en el saldo nuevo.\n\nSaldo nuevo: $0; semana inicial: 5.\n\n¿Ya descargaste y conservas el respaldo actualizado de Firebase?\n\nAceptar sólo si ya verificaste estos datos.`))return 'Activación cancelada. No se modificó Firebase.';
+      const confirmacion=window.prompt('Esta operación cambia el libro contable activo. NO borra el anterior, pero el saldo nuevo empezará en $0.\n\nEscribe exactamente CONFIRMAR para activar:');
+      if(confirmacion!=='CONFIRMAR')return 'Activación cancelada. No se modificó Firebase.';
+      const respuesta=await fetch('/api/activar-reinicio',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({confirmacion,respaldoConfirmado:true})});
+      const cuerpo=await respuesta.json().catch(()=>({}));
+      if(!respuesta.ok)throw Error(cuerpo.error||`No se pudo activar el nuevo ahorro (HTTP ${respuesta.status}).`);
+      return 'Nuevo ahorro activado desde la semana 5. Saldo inicial $0; historiales anteriores conservados.';
+    });
+  };
   const cambiarSemestreAhora=async()=>{
     if(!esAdminGeneral||!usuario||!periodo?.meta||periodo.meta.cerradoEn||vacacionesActivas||!destinoSiguiente)return;
     try{for(const salon of Object.keys(periodo.salones||{}))salonSiguiente(salon);}
@@ -509,7 +529,7 @@ export default function App() {
       const token=await usuario.getIdToken();
       const respuesta=await fetch('/api/avanzar-semestre',{
         method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
-        body:JSON.stringify({periodo:periodoId}),
+        body:JSON.stringify({periodo:periodoId,confirmacion}),
       });
       const body=await respuesta.json().catch(()=>({}));
       if(!respuesta.ok)throw Error(body.error||`No se pudo avanzar el semestre (HTTP ${respuesta.status}).`);
@@ -631,7 +651,7 @@ export default function App() {
             <div className="ag-stats"><div><CircleDollarSign size={21}/><strong>{pesos(cuotaSemanal)}</strong><span>Por semana</span></div><div><UsersRound size={21}/><strong>{cargando?'—':lista.length}</strong><span>Integrantes</span></div><div><CheckCircle2 size={21}/><strong>{vigenteParaRegistrar?pagaron:'—'}</strong><span>Pagaron esta selección</span></div></div>
           </section>
           {esCorteEnSalon&&<div className="ag-note"><History size={17}/> Nuevo ahorro desde la semana 5. Los saldos parten de $0 y las semanas anteriores no generan adeudos. Los registros previos permanecen fuera de esta contabilidad.</div>}
-          {periodoId==='2026-2027-A'&&!ahorroNuevoActivo&&<div className="ag-error"><AlertTriangle size={17}/> El reinicio contable de la semana 5 aún no está activado. No registres movimientos hasta completar la migración segura.</div>}
+          {periodoId==='2026-2027-A'&&!ahorroNuevoActivo&&<div className="ag-error"><AlertTriangle size={17}/> El reinicio contable de la semana 5 aún no está activado. No registres movimientos hasta completar la migración segura.{esAdminGeneral&&<div style={{marginTop:12}}><SmallButton disabled={!!operacion} onClick={activarReinicioSeguro}><ShieldCheck size={16}/> Revisar y activar ahorro nuevo</SmallButton></div>}</div>}
           <Panel title="Ahorro de la carrera" icon={Wallet}>
             {reporteError&&<div className="ag-error"><AlertTriangle size={17}/>{reporteError}</div>}
             {!reporteFondos&&!reporteError&&<p className="ag-muted">Calculando aportaciones…</p>}

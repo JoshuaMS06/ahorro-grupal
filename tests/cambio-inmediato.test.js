@@ -6,7 +6,7 @@ import {primerLunesDesdeFecha} from '../lib/semestres.js';
 const origen='2026-2027-A';
 function ejemplo(){return {
  roles:{adminGeneralUid:'general',porUsuario:{responsable:{periodo:origen,salon:'507',plaza:'1'},fin:{periodo:origen,salon:'1007',plaza:'2'}},responsables:{[origen]:{'507':{'1':'responsable'},'1007':{'2':'fin'}}}},
- periodos:{[origen]:{meta:{nombre:'Actual',lunesBase:'2026-10-19',semanaBase:4,creadoEn:1},salones:{'507':{nombre:'507'},'107':{nombre:'107'},'1007':{nombre:'1007'}}}},
+ periodos:{[origen]:{meta:{nombre:'Actual',lunesBase:'2026-10-19',semanaBase:4,creadoEn:1,reinicioContable:{version:1,semanaInicio:5,activadoEn:1}},salones:{'507':{nombre:'507'},'107':{nombre:'107'},'1007':{nombre:'1007'}}}},
  ahorro:{integrantes:{'Uno':{pagos:3}}},
  aulas:{[origen]:{
   '507':{meta:{cuotaSemanal:20,creadoEn:1},integrantes:{s001:{nombre:'Uno',aliasLegado:'Uno'}},pagos:{p1:{estado:'pagado',monto:20}}},
@@ -51,4 +51,9 @@ test('un retiro pendiente bloquea el avance completo, sin cambios',()=>{
  const original=structuredClone(u);
  assert.throws(()=>prepararCambioInmediato(u,origen,Date.now()),/retiros pendientes/);
  assert.deepEqual(u,original);
+});
+
+test('no permite avanzar el semestre original sin activar el reinicio contable',()=>{
+ const d=ejemplo();delete d.periodos[origen].meta.reinicioContable;
+ assert.throws(()=>prepararCambioInmediato(d,origen,Date.now()),/Activa el ahorro nuevo/);
 });

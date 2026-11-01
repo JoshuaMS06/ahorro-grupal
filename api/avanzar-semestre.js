@@ -1,12 +1,15 @@
 import {adminDatabase, usuarioVerificado} from '../lib/adminServidor.js';
 import {prepararCambioInmediato} from '../lib/avanceInmediato.js';
+import {esConfirmacionValida} from '../lib/vacaciones.js';
 
 // Sólo el administrador general puede efectuar el cambio. No hay cron, fecha
 // futura ni escritura directa desde el navegador. La fecha la fija el servidor.
 export default async function handler(req,res) {
   res.setHeader('Cache-Control','no-store');
   if(req.method!=='POST')return res.status(405).json({error:'Método no permitido.'});
-  const {periodo}=req.body||{};
+  const {periodo,confirmacion}=req.body||{};
+  if(!esConfirmacionValida(confirmacion))
+    return res.status(400).json({error:'Debes escribir exactamente CONFIRMAR.'});
   if(typeof periodo!=='string'||!/^\d{4}-\d{4}-[AB]$/.test(periodo))
     return res.status(400).json({error:'Semestre inválido.'});
   if(!/^Bearer \S+$/.test(req.headers.authorization||''))

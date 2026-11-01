@@ -23,6 +23,8 @@ export default async function handler(req,res){
     const objetivo=aulas?.[periodo]?.[salon];
     if(!objetivo)return res.status(404).json({error:'Salón no encontrado.'});
     const periodos=periodosSnap.val()||{};
+    if(periodo==='2026-2027-A'&&!corteActivo(periodos))
+      return res.status(409).json({error:'El saldo nuevo aún no está activado. No se mostrará el saldo histórico como actual.'});
     const resumen=corteActivo(periodos)
       ?resumirAhorroReiniciado(aulas,periodos)
       :resumirFondos(aulas,(await db.ref('ahorro/integrantes').get()).val()||{});
