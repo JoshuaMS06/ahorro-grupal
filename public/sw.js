@@ -1,5 +1,5 @@
 /* Caché del armazón PWA; nunca almacena datos de Firebase ni contraseñas. */
-const VERSION = 'ahorro-shell-v12-roles-emulator-20261028';
+const VERSION = 'ahorro-shell-v13-fondos-semestres-20261031';
 const SHELL = ['/', '/manifest.webmanifest', '/icons/cerdito-192.png', '/icons/cerdito-512.png'];
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(VERSION).then(async (cache) => {
@@ -9,7 +9,7 @@ self.addEventListener('install', (event) => {
     const htmlResponse = await cache.match('/');
     if (htmlResponse) {
       const html = await htmlResponse.text();
-      const assetPaths = [...html.matchAll(/(?:src|href)=[\"'](\/assets\/[^\"']+)[\"']/g)].map((match) => match[1]);
+      const assetPaths = [...html.matchAll(/(?:src|href)=["'](\/assets\/[^"']+)["']/g)].map((match) => match[1]);
       if (assetPaths.length) await cache.addAll(assetPaths);
     }
   }).then(() => self.skipWaiting()));

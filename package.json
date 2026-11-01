@@ -18,6 +18,7 @@
     "postcss": "^8.5.31",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
+    "read-excel-file": "^9.3.14",
     "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
@@ -36,6 +37,9 @@
     "@grpc/grpc-js": "1.14.6",
     "jwks-rsa": {
       "jose": "4.15.9"
+    },
+    "rimraf": {
+      "glob": "14.0.2"
     }
   }
 }

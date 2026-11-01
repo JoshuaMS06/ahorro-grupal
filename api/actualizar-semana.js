@@ -1,5 +1,7 @@
 import { sign } from 'node:crypto';
-import { semanaActualMexico, ZONA_HORARIA_AHORRO } from '../lib/semanaAutomatica.js';
+import { ZONA_HORARIA_AHORRO } from '../lib/semanaAutomatica.js';
+import { semanaPeriodo } from '../lib/aulas.js';
+import { seleccionarCicloActivo } from '../lib/vacaciones.js';
 
 // Función privada de Vercel: únicamente modifica ahorro/semana.
 // Se autentica con un OAuth2 de la cuenta de servicio; nunca se carga
@@ -54,16 +56,20 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'No autorizado.' });
   }
   try {
-    const semana = semanaActualMexico();
     const token = await tokenParaFirebase();
-    const ruta = `${DATABASE_URL}/ahorro/semana.json`;
     const encabezados = { Authorization: `Bearer ${token}` };
+    const lista = await fetch(`${DATABASE_URL}/periodos.json`, { headers: encabezados, cache: 'no-store' });
+    if (!lista.ok) throw new Error(`No se pudieron consultar los ciclos: HTTP ${lista.status}`);
+    const {id:periodoId,meta} = seleccionarCicloActivo(await lista.json());
+    const semana = semanaPeriodo(meta);
+    const vacacionesActivas = meta.vacaciones?.activas===true;
+    const ruta = `${DATABASE_URL}/ahorro/semana.json`;
     // Solo se modifica el nodo semana; jamás se sobreescriben integrantes o pagos.
     const actual = await fetch(ruta, { headers: encabezados, cache: 'no-store' });
     if (!actual.ok) throw new Error(`No se pudo consultar la semana: HTTP ${actual.status}`);
     const semanaGuardada = await actual.json();
     if (semanaGuardada === semana) {
-      return res.status(200).json({ ok: true, semana, actualizado: false, zonaHoraria: ZONA_HORARIA_AHORRO });
+      return res.status(200).json({ ok: true, semana, periodoId, vacacionesActivas, actualizado: false, zonaHoraria: ZONA_HORARIA_AHORRO });
     }
     // Asignación ABSOLUTA (idempotente), nunca "semana + 1". Aunque se ejecute
     // dos veces un lunes, no se duplica el avance ni se cambian aportaciones.
@@ -74,7 +80,7 @@ export default async function handler(req, res) {
       cache: 'no-store',
     });
     if (!respuesta.ok) throw new Error(`No se pudo sincronizar la semana: HTTP ${respuesta.status}`);
-    return res.status(200).json({ ok: true, semana, actualizado: true, zonaHoraria: ZONA_HORARIA_AHORRO });
+    return res.status(200).json({ ok: true, semana, periodoId, vacacionesActivas, actualizado: true, zonaHoraria: ZONA_HORARIA_AHORRO });
   } catch (error) {
     console.error('Error en tarea de semanas:', error?.message || error);
     return res.status(500).json({ error: 'Falló la sincronización semanal. Revisa los registros de la función.' });

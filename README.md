@@ -1,69 +1,54 @@
-# AhorroGrupal — Bloque 2: roles y permisos por salón (SOLO PRUEBAS)
+# AhorroGrupal — Bloque 3 (fondos separados y avance semestral)
 
-**No desplegar en Vercel, no hacer `git push` y no publicar todavía las nuevas reglas de Firebase.** Esta es una versión de desarrollo local para comprobar la seguridad antes de reemplazar el proyecto actual.
+**Versión de VALIDACIÓN. No publicar todavía en GitHub, Vercel ni Firebase.**
 
-## Funciones implementadas
+Proyecto real: `C:\Proyectos\AppAhorro`.
 
-- **1 administrador general** cuyo UID se almacena en `roles/adminGeneralUid` (string). Esa ruta solo puede modificarse desde Firebase Console o mediante una operación privilegiada, no desde la app.
-- **2 plazas por salón y ciclo escolar**, administradas desde la pestaña «Responsables». Cada plaza contiene un UID de Firebase Authentication.
-- El administrador general puede ver todos los grupos, dar de alta estudiantes, importar listas, cerrar periodos, corregir pagos, aprobar/rechazar retiros y asignar/revocar responsables.
-- Cada responsable ve **únicamente su grupo y ciclo**, registra aportaciones nuevas y solicita retiros; **no puede aprobar retiros, anular pagos, cambiar estudiantes, crear ciclos ni asignar permisos**.
-- Al revocar un UID se corta el acceso a datos de su salón sin borrar pagos ni estudiantes.
-- Se conserva el sistema de una caja por salón, las cuotas de $10 para 107/307/707/907 y $20 para 507, nombres cortos, ícono y PWA. Sin alterar los datos ya guardados.
-- El administrador general no se ha elegido todavía: **debe seleccionarse expresamente cuál de las cuentas actuales tendrá el cargo** antes de cualquier migración.
+## Cambios que contiene este paquete
 
-## Probar sin usar Firebase real (recomendado)
+- Cada pago nuevo de la **generación que comenzó en el 507 en 2026-2027-A** es único de **$20**: $10 para su ahorro exclusivo y $10 para el fondo de carrera. Esta condición identifica a la generación, NO a cualquier salón que se llame 507 en el futuro.
+- Los otros salones registran un pago nuevo de **$10**, totalmente para la carrera.
+- Las cuotas históricas del módulo `/ahorro/integrantes` (20 pesos cada una) siguen **al 100 % en el fondo del grupo**. No se modifican ni se duplican.
+- Nuevo informe privado con **ahorro propio de la generación especial**, **aportación de la generación al fondo común** y **saldo total de carrera**. El informe exige autenticación de administrador general o responsable de la sala solicitada y no incluye datos personales.
+- Los retiros nuevos identifican el fondo (`grupo` o `carrera`); el servidor no permite que el fondo de carrera se descuente del fondo propio. Un retiro aprobado que carezca de clasificación se señala para revisión manual.
+- Avance semestral (107→207, 307→407, 507→607, 707→807, 907→1007, 1007→archivo). La cuota especial de $20 permanece con la generación, incluso cuando sea 607. Se copian únicamente los integrantes; no se copian pagos ni retiros. El nuevo periodo se crea vacío de movimientos y el anterior se archiva.
+- El admin general debe **programar expresamente el lunes de cambio y el periodo destino** en «Ciclos y salones». Sin fecha configurada, la tarea diaria no realiza cambios. No se avanza si hay solicitudes de retiro pendientes. La nueva tarea cron está protegida por `CRON_SECRET`.
 
-1. Copia la carpeta actual `C:\Proyectos\AppAhorro` a `C:\Proyectos\AppAhorro-Pruebas` (incluye archivos de Git solo si realmente los necesitas; no hagas `git push`).
-2. Extrae el ZIP del Bloque 2 directamente en **AppAhorro-Pruebas**. Conserva el proyecto original intacto.
-3. Abre la copia en VS Code / PowerShell y ejecuta:
+## Preparación local
+
+1. Mantén guardado el respaldo privado de Firebase fuera del repositorio y de cualquier carpeta pública.
+2. En tu misma carpeta `C:\Proyectos\AppAhorro`, extrae el ZIP **directamente sobre los archivos del proyecto**. No borres la carpeta ni sustituyas tu `package-lock.json` por uno anterior (el ZIP no lo incluye).
+3. Abre PowerShell en esa carpeta. Ejecuta **un comando por vez**:
 
    ```powershell
    npm install
    npm test
    npm run build
-   npm install -g firebase-tools
-   firebase emulators:start --project demo-ahorro-grupal --only database,auth
+   npm audit
    ```
 
-4. Mantén esa terminal abierta. Abre una SEGUNDA terminal en la misma carpeta:
+4. Comprueba que `npm test` tenga **al menos 33 pruebas**, todas aprobadas, y que el build no tenga errores. El aviso de tamaño del paquete no es error.
+5. **Prueba las reglas con el emulador antes de publicarlas en Firebase**:
 
    ```powershell
-   node scripts/crear-demostracion-local.mjs
-   npm run dev
+   firebase emulators:exec --project demo-ahorro-grupal --only database "node --test tests-emulator/roles.rules.test.mjs"
    ```
 
-5. Entra a la dirección local que muestre Vite (normalmente http://localhost:5173). Verás la app conectada a Firebase **EMULATOR**, no al proyecto de producción. Prueba las cuentas ficticias:
+6. NO copies los datos de producción al emulador si pueden exponerse. Utiliza el script de demostración local y usuarios ficticios para validar permisos y pagos.
+7. Cuando todo pase, revisa visualmente el panel y el formato de cada fondo. En `npm run dev`, la función `/api/resumen-carrera` no se ejecuta con Vite solo: en el sitio real funciona por Vercel, pero requiere probar antes que las credenciales privadas estén bien configuradas.
 
-   - General: `general@pruebas.local`
-   - Responsable 107: `responsable107@pruebas.local`
-   - Responsable 307: `responsable307@pruebas.local`
-   - Contraseña temporal para las tres: `DemoAhorro2026!` (**solo para emuladores**).
+## Validación adicional ANTES de publicar
 
-6. Confirma que el administrador general ve los tres salones de prueba, puede abrir «Responsables» y gestionar las plazas. Confirma que 107 no puede ver el 307, y viceversa. Comprueba que solo el general puede aprobar retiros y anular pagos. Los datos de prueba son completamente ficticios.
-7. **Nunca utilices estos correos ni esta contraseña de demostración en producción.**
+- Abrir la pestaña «Responsables» como admin general y validar que un responsable vea sólo su salón.
+- Confirmar las cifras del respaldo: cinco salones, 119 estudiantes, **54 cuotas históricas de $20** en el 507 = **$1,080 sólo del fondo propio** en la copia aportada. Si ya registraron pagos reales posteriores al respaldo, las cifras serán mayores.
+- Hacer simulaciones de pago de $10 y $20, anulación, solicitud de retiro por fondo, rechazo y aprobación con datos de prueba.
+- Simular el avance 107→207 y 507→607; constatar que no se transportan pagos, y que no hay avance doble.
+- Probar en Vercel los endpoint privados antes de procesar retiros reales; GET sin credenciales de `/api/resumen-carrera` debe responder 400/401, nunca mostrar información privada.
 
-El proyecto usa los emuladores por defecto solo durante `npm run dev`. Para no usarlos explícitamente en desarrollo, configura `VITE_USE_FIREBASE_EMULATORS=false` en un archivo `.env.local`, **pero no lo hagas durante estas pruebas**. En `npm run build` de producción la app siempre utiliza Firebase real.
+## Límites y pendientes importantes
 
-## Prueba automatizada real de reglas (opcional, pero recomendada antes de publicar)
-
-En una copia de pruebas con los emuladores disponibles:
-
-```powershell
-npm install --no-save @firebase/rules-unit-testing
-firebase emulators:exec --project demo-ahorro-grupal --only database "node --test tests-emulator/*.test.mjs"
-```
-
-`tests-emulator/roles.rules.test.mjs` comprueba lecturas y escrituras permitidas/denegadas, intentos entre salones, pagos, retiros y revocaciones. El comando no tiene acceso a datos reales. Las pruebas `npm test` validan lógica de aplicación, **pero no sustituyen estas pruebas de reglas**.
-
-## Migración a producción — NO EJECUTAR TODAVÍA
-
-1. Respaldar `ahorro`, `periodos`, `aulas`, `adminUids` y las reglas actuales de Realtime Database.
-2. Elegir cuál de las dos cuentas de administrador existentes será el **único administrador general** y confirmar su UID exacto (sin espacios).
-3. Crear en la raíz de RTDB el nodo `roles/adminGeneralUid` como **String**, con ese UID. No eliminar los datos existentes ni las cuentas de Firebase Authentication.
-4. Solo tras las pruebas, publicar `firebase-database.rules.json` (y mantener una copia de las anteriores). Las reglas nuevas dejan de usar `adminUids` como fuente de permisos globales; el nodo viejo queda como legado sin capacidad de crear más administradores.
-5. Crear cuentas de los 10 responsables en Firebase Authentication, una por persona. Desde «Responsables» asignar 2 UID por salón y verificar su acceso en teléfonos diferentes.
-6. Verificar que el usuario sin permiso no lee listas; que un responsable 107 no lee/modifica 307; que no puede aprobar retiros ni modificar las reglas; y que el admin general puede seguir viendo el historial anterior del 507.
-7. Publicar únicamente después de superar esas comprobaciones y revisar el historial. Conservar el ZIP/commit anterior para revertir si hiciera falta.
-
-**Nota de seguridad:** los responsables pueden registrar pagos nuevos de su salón pero no anular históricos. El administrador general sigue siendo un usuario privilegiado, por lo que una futura fase de auditoría con servidor y registros inmutables es recomendable. El calendario semanal y los pagos existentes no se reescriben.
+- **No se implementan todavía las bajas/reingresos ni las devoluciones individuales**: requieren saldo por estudiante y un procedimiento de pago comprobable. No se deben usar retiros genéricos como sustituto de una devolución individual.
+- El archivo de semestre 1007 conserva el historial para administración, pero los casos de devolución posteriores al cierre necesitarán el módulo individual antes de activarlo en producción.
+- La tarea automática se programa para ejecutarse una vez al día y podría correr dentro de la hora de inicio indicada por Vercel. Si queda «migracionEnCurso» por una falla, **no borres ni reinicies datos manualmente**; revisa los registros del servidor y el destino antes de reintentar.
+- En esta entrega no se modificó Firebase ni se realizaron publicaciones remotas.
+- Para evitar mezclar dinero, **no publiques parcialmente** frontend, API y reglas: deben validarse como un bloque coherente.

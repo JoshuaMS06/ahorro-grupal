@@ -24,11 +24,11 @@ try {
       [uno.uid]:{periodo:'2026-2027-A',salon:'107',plaza:'1'},
       [dos.uid]:{periodo:'2026-2027-A',salon:'307',plaza:'1'}
     },responsables:{'2026-2027-A':{'107':{'1':uno.uid},'307':{'1':dos.uid}}}},
-    periodos:{'2026-2027-A':{meta:{nombre:'Ciclo de prueba 2026-2027-A',lunesBase:'2026-10-19',semanaBase:4,creadoEn:Date.now()},salones:{'107':{nombre:'Salón 107'},'307':{nombre:'Salón 307'},'507':{nombre:'Salón 507'}}}},
+    periodos:{'2026-2027-A':{meta:{nombre:'Ciclo de prueba 2026-2027-A',lunesBase:'2026-10-19',semanaBase:4,reinicioContable:{version:1,semanaInicio:5,activadoEn:Date.now()},creadoEn:Date.now()},salones:{'107':{nombre:'Salón 107'},'307':{nombre:'Salón 307'},'507':{nombre:'Salón 507'}}}},
     aulas:{'2026-2027-A':{
-      '107':{meta:{nombre:'Salón 107',cuotaSemanal:10,inicioDetalle:4},integrantes:{demo107:{nombre:'Alumna de prueba',control:''}}},
+      '107':{meta:{nombre:'Salón 107',cuotaSemanal:10,inicioDetalle:4},integrantes:{demo107:{nombre:'Alumna de prueba',control:''}},pagos:{demo107_s0005:{estudianteId:'demo107',semana:5,monto:10,estado:'pagado',creadoEn:1,fondoGrupo:0,fondoCarrera:10}}},
       '307':{meta:{nombre:'Salón 307',cuotaSemanal:10,inicioDetalle:4},integrantes:{demo307:{nombre:'Alumno de prueba',control:''}}},
-      '507':{meta:{nombre:'Salón 507',cuotaSemanal:20,inicioDetalle:4},integrantes:{demo507:{nombre:'Integrante de prueba',control:''}}}
+      '507':{meta:{nombre:'Salón 507',cuotaSemanal:20,inicioDetalle:6},integrantes:{demo507:{nombre:'Integrante de prueba',control:''}},pagos:{demo507_s0005:{estudianteId:'demo507',semana:5,monto:20,estado:'pagado',creadoEn:1,fondoGrupo:20,fondoCarrera:0}}}
     }}
   };
   const res=await fetch(DB,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(datos)});

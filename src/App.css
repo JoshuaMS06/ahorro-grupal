@@ -9,3 +9,32 @@
 .ag-role-period h3{margin:.3rem 0 1rem;color:#dec8ff}.ag-role-room{padding:1rem;border:1px solid rgba(182,142,255,.2);border-radius:14px;background:rgba(38,23,66,.35);margin-bottom:1rem}
 .ag-role-room h4{margin:0 0 .75rem;color:#eee1ff}.ag-role-slot{display:flex;align-items:center;gap:.55rem;flex-wrap:wrap;margin:.5rem 0}.ag-role-slot>span{min-width:110px;font-size:.85rem;color:#c7b3ee}.ag-role-slot input{min-width:220px;flex:1;background:#130c24;color:#fff;border:1px solid #684a95;border-radius:10px;padding:.65rem}.ag-role-slot .ag-btn{min-width:76px}
 @media(max-width:560px){.ag-role-slot{align-items:stretch;flex-direction:column}.ag-role-slot input{min-width:0;width:100%}}
+
+/* Bloque 3: selector del fondo dentro de formularios administrativos. */
+.ag-simple-form select { background:#130d1e; border:1px solid #614779; padding:12px; border-radius:11px; color:white; width:100%; min-width:0; }
+.ag-simple-form select option { background:#211333; color:white; }
+.ag-panel .ag-stats { grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); }
+.ag-panel .ag-stats strong { overflow-wrap:anywhere; font-size:clamp(19px,2.6vw,28px); }
+
+/* Rediseño del panel general: fondo común, grupos y accesos directos. */
+.ag-general-hero{background:linear-gradient(135deg,#55328d,#2f1c4e 65%,#1e2037);border:1px solid #9870c9;border-radius:22px;padding:clamp(22px,4vw,36px);margin:20px 0;box-shadow:0 18px 45px #0002}
+.ag-general-label{display:flex;align-items:center;gap:10px;font-size:12px;letter-spacing:.07em;font-weight:800;color:#e2c9ff}
+.ag-general-amount{display:block;font-size:clamp(35px,5vw,58px);font-weight:850;line-height:1.12;margin:18px 0 9px;color:#fff;font-variant-numeric:tabular-nums}
+.ag-general-hero>p{font-size:13px;color:#ded1eb;max-width:620px;line-height:1.5}
+.ag-general-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:16px 0 22px}
+.ag-general-metrics>div{border:1px solid #56406e;background:#281c37;border-radius:16px;padding:19px;display:flex;align-items:flex-start;flex-direction:column;gap:8px}
+.ag-general-metrics svg{color:#c5a2ef}.ag-general-metrics strong{font-size:27px;color:white}.ag-general-metrics span{font-size:12px;color:#c3b3d1}
+.ag-general-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}
+.ag-general-actions button{border:1px solid #70528f;border-radius:16px;background:#2a1d3b;color:#e8dcf7;text-align:left;padding:19px;display:flex;flex-direction:column;align-items:flex-start;gap:9px;cursor:pointer;min-height:140px}
+.ag-general-actions button:hover,.ag-general-actions button:focus-visible{border-color:#c096f4;background:#3b2857;outline:none}
+.ag-general-actions button svg{color:#cca6f8}.ag-general-actions button strong{font-size:15px}.ag-general-actions button span{color:#b8a5cb;font-size:12px;line-height:1.45}
+@media(max-width:590px){.ag-general-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.ag-general-actions{grid-template-columns:1fr}.ag-general-actions button{min-height:115px}}
+
+/* Bloque 4.3: responsables por nombre y correo, sin UIDs visibles */
+.ag-role-card{align-items:stretch;flex-direction:column;padding:.85rem;border:1px solid rgba(182,142,255,.14);border-radius:12px}
+.ag-role-card>strong{font-size:.95rem;color:#e6d6ff}
+.ag-role-invite{display:flex;flex-wrap:wrap;gap:.75rem;align-items:end}
+.ag-role-invite label{display:flex;flex:1;min-width:180px;flex-direction:column;gap:.35rem;font-size:.83rem;color:#d7c4f9}
+.ag-role-invite input{min-width:0;width:100%;background:#130c24;color:#fff;border:1px solid #684a95;border-radius:10px;padding:.65rem}
+.ag-role-persona{display:flex;flex-direction:column;gap:.2rem}.ag-role-persona small{color:#cab6e6;overflow-wrap:anywhere}
+@media(max-width:560px){.ag-role-invite{flex-direction:column;align-items:stretch}.ag-role-invite label{min-width:0;width:100%}}
