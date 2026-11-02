@@ -21,7 +21,7 @@ export default async function handler(req,res) {
       if(lista.length>300)return res.status(409).json({error:'Hay demasiadas solicitudes para cargar de una sola vez.'});
       const lectores=(await db.ref('roles/lectores').get()).val()||{};
       const resultado=await Promise.all(lista.map(async ([uid,s])=>{
-        let correo='',nombre='',verificado=false;
+        let correo='',nombre,verificado=false;
         try {
           const cuenta=await auth.getUser(uid);
           correo=cuenta.email||'';
