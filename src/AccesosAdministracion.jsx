@@ -56,7 +56,7 @@ export default function AccesosAdministracion({usuario}) {
     {cargando?<p className="ag-muted">Cargando solicitudes…</p>:solicitudes.length===0?
       <p className="ag-muted">Todavía nadie ha solicitado acceso.</p>:
       <div className="ag-request-list">{solicitudes.map(s=>{
-        const permitir=salones.filter(x=>x.periodo===s.periodo);
+        const permitir=salones;
         const elegido=correcciones[s.uid]||`${s.periodo}/${s.salon}`;
         return <article className="ag-request" key={s.uid}>
           <div className="ag-request-head"><div><strong>{s.nombre||s.correo||'Cuenta sin nombre'}</strong>
