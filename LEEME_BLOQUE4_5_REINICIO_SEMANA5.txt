@@ -1,0 +1,36 @@
+AHORROGRUPAL - BLOQUE 4.5 - REINICIO CONTABLE DESDE SEMANA 5
+VALIDACION LOCAL UNICAMENTE. NO HACER GIT PUSH NI PUBLICAR REGLAS.
+
+Se inicia con $0 sin borrar ningun registro. Se conserva el ciclo y su calendario.
+Durante el ciclo original 2026-2027-A, los pagos nuevos se guardan en
+/pagosReinicio y los retiros nuevos en /retirosReinicio por cada salon.
+Los movimientos anteriores siguen en /pagos, /retiros y /ahorro/integrantes,
+pero NO participan en el nuevo ahorro.
+La semana 5 es el inicio de pagos de TODOS los salones, incluso el 507.
+Semanas 1 a 4 no se muestran como adeudos. El numero semanal NO se reinicia.
+El salon 507 conserva su cuota guardada de 20; los demas, 10.
+
+IMPORTANTE: El corte es EXPLICITO y no se activa automaticamente en la base real.
+En DEMOSTRACION LOCAL el script de demo crea la marca en la metadata del
+periodo original: reinicioContable {version:1,semanaInicio:5,activadoEn:...}
+para probar desde cero. NO copiar esa marca a Firebase real manualmente.
+La activacion de produccion requerira una operacion administrativa de servidor,
+respaldo verificado y la publicacion coordinada de API/frontend/reglas.
+
+INSTALACION:
+1. Conserva el respaldo privado separado del proyecto.
+2. Extrae el ZIP SOBRE C:\Proyectos\AppAhorro y acepta reemplazos.
+3. Ejecuta uno por uno: npm run lint; npm test; npm run build.
+4. Ejecuta: firebase emulators:exec --project demo-ahorro-grupal --only database "node --test tests-emulator/*.test.mjs"
+5. Abre dos terminales: primera firebase emulators:start --project demo-ahorro-grupal --only database,auth;
+segunda: node scripts/crear-demostracion-local.mjs; luego npm run dev.
+6. Usa general@pruebas.local / DemoAhorro2026!, revisa $0 y semana 5,
+registra una aportacion de demo de 10 en 107; debe mostrarse $10,
+la semana anterior no es adeudo y el pago viejo ficticio de semana 5
+no aparece. Prueba tambien cuota 20 del 507.
+
+LIMITACIONES: Los endpoints de Vercel no se ejecutan con npm run dev.
+No aprobar retiros en modo local Vite; probar la funcion en ambiente aislado
+antes de publicar. Tampoco cambiar semestre realmente en produccion.
+Este bloque no crea un endpoint para activar el corte contable en produccion.
+La base real permanece SIN CAMBIOS y los registros NO se borran.

@@ -1,0 +1,27 @@
+AHORROGRUPAL - CORRECCION 409 EN ACTIVACION CON EMULADOR
+
+Causa probable:
+La transaccion de Firebase Realtime Database puede recibir `null` en su primera
+invocacion por falta de cache local. El codigo previo confundia ese `null` con
+un cambio en el UID del administrador y devolvia un 409 falso.
+
+Cambios:
+- SOLO api/activar-reinicio.js.
+- Mantiene una escucha temporal sobre la raiz hasta completar la transaccion.
+- La primera lectura carga la cache; la transaccion sigue siendo atomica y
+  revalida los permisos y toda la estructura antes de escribir el marcador.
+- Desconecta la escucha al terminar, incluso si ocurre un error.
+- No modifica cuotas, salones, roles, reglas, pagos ni historiales.
+
+INSTALACION LOCAL (NO PUBLICAR):
+1. Extraer este ZIP directamente en C:\Proyectos\AppAhorro y reemplazar el archivo.
+2. Abrir PowerShell en C:\Proyectos\AppAhorro.
+3. Ejecutar:
+   npm test
+   npm run lint
+   npm run build
+   firebase emulators:exec --project demo-ahorro-grupal --only auth,database "node --test tests-emulator/activar-reinicio.api.test.mjs"
+
+La ultima prueba requiere el archivo integrado ya instalado en tests-emulator.
+El resultado esperado es pass 1, fail 0, sin activaciones sobre Firebase real.
+No ejecutar git push ni firebase deploy hasta revisar el resultado integrado.

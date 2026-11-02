@@ -1,0 +1,15 @@
+AHORROGRUPAL — CORRECCIÓN DE REGLAS DEL BLOQUE 4.4
+
+Este paquete corrige EXCLUSIVAMENTE un paréntesis sobrante en la propiedad
+.validate de /aulas/$periodo/$salon/retiros/$retiro, línea 74.
+No cambia ninguna condición de acceso, ni los datos de producción.
+
+INSTALACIÓN EN WINDOWS:
+1. En C:\Proyectos\AppAhorro, sustituye firebase-database.rules.json por
+   el archivo incluido en este ZIP (mismo nombre).
+2. Ejecuta:
+   firebase emulators:exec --project demo-ahorro-grupal --only database "node --test tests-emulator/*.test.mjs"
+3. NO publiques las reglas ni hagas git push hasta revisar el resultado.
+
+Comprobación realizada aquí: JSON válido y paréntesis equilibrados en
+las expresiones de reglas. El emulador real todavía debe verificarse en Windows.

@@ -1,0 +1,15 @@
+AHORROGRUPAL — PRUEBA INTEGRADA DEL SERVIDOR (SOLO EMULADORES)
+=============================================================
+No publica nada ni modifica Firebase de producción.
+
+1. Extraer ZIP en C:\Proyectos\AppAhorro, reemplazando archivos si Windows lo pide.
+   Solo añade tests-emulator\activar-reinicio.api.test.mjs y este LEEME.
+2. Cerrar con Ctrl+C cualquier emulador que estuviera abierto.
+3. Ejecutar PowerShell en C:\Proyectos\AppAhorro:
+
+firebase emulators:exec --project demo-ahorro-grupal --only auth,database "node --test tests-emulator/activar-reinicio.api.test.mjs"
+
+Resultado esperado: 1 prueba integrada aprobada, 0 fallidas.
+Nota: Esta prueba usa ÚNICAMENTE datos inventados y las direcciones 127.0.0.1.
+No ejecutar con variables FIREBASE_SERVICE_ACCOUNT_JSON, VERCEL ni credenciales de producción.
+Si aparece un error, NO publicar: copiar el mensaje en el chat.

@@ -130,6 +130,41 @@ try {
     const hist={tipoRegistro:'anterior',estudianteId:'e1',semana:4,monto:10,fondoGrupo:0,fondoCarrera:0,estado:'pagado',creadoEn:700,registradoPor:'resp107',historial:{ev1:{tipo:'registro',fecha:700,uid:'resp107'}}};
     await assertFails(set(ref(responsable107,'aulas/2026-2027-A/107/pagosAnteriores/e1_s0004'),hist));
   });
+  await test('507: solo registra reparto $10 carrera + $10 ahorro propio, sin reclasificar lo anterior',async()=>{
+    await env.withSecurityRulesDisabled(async ctx=>{
+      await set(ref(ctx.database(),'aulas/2026-2027-A/507'),{
+        meta:{nombre:'Salón 507',cuotaSemanal:20,inicioDetalle:6},integrantes:{e3:{nombre:'Estudiante'}}
+      });
+      await set(ref(ctx.database(),'periodos/2026-2027-A/meta/vacaciones/activas'),false);
+    });
+    const r='aulas/2026-2027-A/507/pagosReinicio';
+    const base={estudianteId:'e3',semana:5,monto:20,fondoGrupo:10,fondoCarrera:10,estado:'pagado',creadoEn:600,registradoPor:'adminGeneral',historial:{e1:{tipo:'registro',fecha:600,uid:'adminGeneral'}}};
+    await assertSucceeds(set(ref(general,`${r}/e3_s0005`),base));
+    await assertFails(set(ref(general,`${r}/e3_s0006`),{...base,semana:6,fondoGrupo:0,fondoCarrera:20}));
+    const guardado=(await get(ref(general,`${r}/e3_s0005`))).val();
+    assert.equal(guardado.fondoCarrera,10);assert.equal(guardado.fondoGrupo,10);
+  });
+  await test('profesores: solo administrador general registra $10 por semana y consulta saldos',async()=>{
+    const path='profesoresAhorro/2026-2027-A/p01/s0005';
+    const aporte={profesorId:'p01',semana:5,monto:10,tipoRegistro:'actual',estado:'pagado',creadoEn:800,registradoPor:'adminGeneral',historial:{ev1:{tipo:'registro',fecha:800,uid:'adminGeneral'}}};
+    await assertFails(get(ref(responsable107,'profesoresAhorro')));
+    await assertFails(set(ref(responsable107,path),{...aporte,registradoPor:'resp107'}));
+    await assertFails(set(ref(invitado,path),aporte));
+    await assertSucceeds(set(ref(general,path),aporte));
+    await assertFails(set(ref(general,path),aporte));
+    await assertFails(set(ref(general,'profesoresAhorro/2026-2027-A/p02/s0006'),{...aporte,profesorId:'p02',semana:6,monto:20}));
+    await assertSucceeds(get(ref(general,'profesoresAhorro/2026-2027-A')));
+  });
+  await test('profesores: histórico 1-4 separado; anulación con motivo y sin borrado',async()=>{
+    const p='profesoresAhorro/2026-2027-A/p01/s0003';
+    const aporte={profesorId:'p01',semana:3,monto:10,tipoRegistro:'anterior',estado:'pagado',creadoEn:900,registradoPor:'adminGeneral',historial:{ev1:{tipo:'registro',fecha:900,uid:'adminGeneral'}}};
+    await assertSucceeds(set(ref(general,p),aporte));
+    await assertFails(set(ref(general,'profesoresAhorro/2026-2027-A/p01/s0004'),{...aporte,semana:4,tipoRegistro:'actual'}));
+    const anulado={...aporte,estado:'anulado',anuladoEn:1000,anuladoPor:'adminGeneral',correcciones:1,historial:{...aporte.historial,ev2:{tipo:'anulacion',fecha:1000,uid:'adminGeneral',motivo:'Registro accidental'}}};
+    await assertSucceeds(set(ref(general,p),anulado));
+    await assertFails(set(ref(general,p),null));
+    assert.equal((await get(ref(general,p))).val().estado,'anulado');
+  });
 } finally {
   await env.cleanup();
 }

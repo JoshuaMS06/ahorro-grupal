@@ -38,3 +38,16 @@
 .ag-role-invite input{min-width:0;width:100%;background:#130c24;color:#fff;border:1px solid #684a95;border-radius:10px;padding:.65rem}
 .ag-role-persona{display:flex;flex-direction:column;gap:.2rem}.ag-role-persona small{color:#cab6e6;overflow-wrap:anywhere}
 @media(max-width:560px){.ag-role-invite{flex-direction:column;align-items:stretch}.ag-role-invite label{min-width:0;width:100%}}
+
+/* Selector semanal compacto: evita que «Actual» sobresalga de su botón. */
+.ag-panel-heading{flex-wrap:wrap;min-width:0}
+.ag-week-select{display:flex;align-items:center;gap:5px;flex-wrap:wrap;max-width:100%;min-width:0}
+.ag-week-select>button{box-sizing:border-box;flex:0 0 32px;width:32px;min-width:32px;height:32px;font-size:18px;line-height:1;display:inline-flex;align-items:center;justify-content:center;padding:0;white-space:nowrap}
+.ag-week-select>select{box-sizing:border-box;min-width:98px;max-width:148px;height:32px;padding:5px 6px;flex:0 1 auto;font-size:12px}
+.ag-week-select>button.ag-week-current{flex:0 0 auto;width:auto;min-width:52px;max-width:100%;padding:0 9px;font-size:11px;font-weight:700;line-height:1}
+.ag-prof-saving{min-width:0;flex-wrap:wrap}
+.ag-prof-details{flex:1;min-width:165px;display:flex;flex-direction:column;gap:6px}
+.ag-prof-details strong{overflow-wrap:anywhere}
+.ag-prof-details small{color:#b9a5c9;font-size:11px;line-height:1.35}
+.ag-prof-saving .ag-pay-actions{margin-left:auto}
+@media(max-width:590px){.ag-week-select-docentes{width:100%}.ag-week-select>select{max-width:135px}.ag-prof-saving{gap:9px}.ag-prof-details{min-width:145px}}

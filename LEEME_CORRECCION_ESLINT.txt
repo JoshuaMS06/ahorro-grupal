@@ -1,0 +1,35 @@
+PARCHE DE VALIDACION LOCAL — AhorroGrupal, Bloque 3
+
+OBJETIVO
+Corregir los 26 errores y 3 advertencias del comando npm run lint
+del Bloque 3. No modifica cuotas, saldos ni datos de Firebase.
+
+PREPARACIÓN
+1. Conservar tu respaldo de Firebase y tu copia original del proyecto.
+2. Extraer este ZIP directamente en C:\Proyectos\AppAhorro.
+3. Autorizar reemplazar SOLO estos cinco archivos:
+   - src/App.jsx
+   - api/avanzar-semestre.js
+   - api/resolver-retiro.js
+   - public/sw.js
+   - eslint.config.js
+4. NO se reemplazan package.json ni package-lock.json, por lo que
+   se conservan las dependencias locales y los overrides.
+
+VALIDACIÓN EN POWERSHELL, UN COMANDO POR VEZ
+  npm run lint
+  npm test
+  npm run build
+  npm audit --omit=dev
+  firebase emulators:exec --project demo-ahorro-grupal --only database "node --test tests-emulator/*.test.mjs"
+
+IMPORTANTE
+No ejecutar git push, no publicar reglas en Firebase ni programar un
+cambio semestral real hasta comprobar todas las pruebas.
+
+VALIDADO EN LA COPIA DE TRABAJO
+- ESLint: 0 errores, 0 advertencias.
+- Pruebas unitarias: 33/33 aprobadas.
+- Sintaxis JSX: válida.
+- Compilación Linux aquí NO validada: falta un binding nativo de Rolldown
+  para Linux en el entorno; el usuario debe repetir npm run build en Windows.

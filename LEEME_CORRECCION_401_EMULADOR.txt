@@ -1,0 +1,22 @@
+PRUEBA INTEGRADA DE ACTIVACIÓN — PARCHE 401
+
+CAUSA:
+La versión anterior trataba de cargar datos por REST con ?auth=owner,
+pero el emulador respondió 401 Permission denied. Por tanto la prueba no
+llegó a ejecutar la activación ni hubo ningún fallo demostrado en el backend.
+
+SOLUCIÓN:
+Reemplazamos exclusivamente tests-emulator/activar-reinicio.api.test.mjs.
+Ahora prepara y consulta datos ficticios mediante Firebase Admin SDK,
+configurado explícitamente para los emuladores locales. No cambia archivos
+api/, lib/, las reglas, ni datos reales.
+
+INSTALACIÓN:
+1. Extrae este ZIP sobre C:\Proyectos\AppAhorro (reemplaza el test viejo).
+2. Confirma que exista tests-emulator\activar-reinicio.api.test.mjs.
+3. Abre PowerShell en C:\Proyectos\AppAhorro y ejecuta:
+   firebase emulators:exec --project demo-ahorro-grupal --only auth,database "node --test tests-emulator/activar-reinicio.api.test.mjs"
+
+NO EJECUTAR EN PRODUCCIÓN.
+No configures FIREBASE_SERVICE_ACCOUNT_JSON para la prueba.
+No ejecutes git push ni firebase deploy todavía.

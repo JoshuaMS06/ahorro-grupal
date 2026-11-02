@@ -1,0 +1,29 @@
+AHORROGRUPAL — AJUSTE DE SELECTOR, PROFESORES Y REPARTO 507
+Versión de prueba local. NO publicar automáticamente.
+
+Qué incluye
+1) El botón «Hoy» pasa a «Actual», compacto, con ancho adecuado y sin desbordamiento; las opciones del selector se muestran como «Semana 1», etc.
+2) Profesores: se reutiliza el directorio existente de 8 personas. Cada profesor puede acumular $10 por semana, con selección de semanas, registro, anulación con motivo, historial 1–4 separado y saldo personal acumulado entre semestres. Solo el administrador general puede registrar o consultar ahorros de profesores.
+3) Salón 507: para PAGOS NUEVOS de la generación de 507, la cuota $20 se distribuye $10 a carrera y $10 a ahorro propio de 507. Las demás cuotas continúan en su fondo correspondiente.
+4) La contabilidad ya registrada NO se modifica, recalcula ni reclasifica silenciosamente. La suma de carrera se basa en el desglose guardado en cada pago. Si ya existen pagos de 507 registrados antes de este cambio con $20 completos en carrera, requieren conciliación específica y no se alteran en este parche.
+
+INSTALACIÓN LOCAL
+- Haz una copia de seguridad actualizada de Realtime Database antes de publicar.
+- Extrae este ZIP DIRECTAMENTE en C:\Proyectos\AppAhorro, aceptando reemplazar archivos.
+- No subir a GitHub ni hacer firebase deploy hasta confirmar las pruebas.
+
+PRUEBAS
+cd C:\Proyectos\AppAhorro
+npm test
+npm run lint
+npm run build
+firebase emulators:exec --project demo-ahorro-grupal --only auth,database "node --test tests-emulator/roles.rules.test.mjs"
+
+Esperado: 86 pruebas unitarias y 21 pruebas de reglas de seguridad.
+Una vez aprobado, verificar visualmente selector y profesores con emuladores antes de desplegar.
+
+IMPORTANTE
+- Profesores usan un ahorro individual, separado del ahorro del salón 507 y del fondo de carrera.
+- Ningún docente obtiene automáticamente usuario o permisos de acceso; solo el administrador general administra este registro.
+- Este bloque NO incorpora gestión de retiro del dinero del profesor o del fondo propio del 507. Requeriría flujo de retiro con validación independiente.
+- No añadir manualmente datos ni corregir importes anteriores en Firebase Console.

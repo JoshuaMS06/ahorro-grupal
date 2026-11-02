@@ -1,0 +1,22 @@
+AHORROGRUPAL — PARCHE BLOQUE 4.7: REGLAS DE VACACIONES
+
+Esta actualización corrige exclusivamente la sintaxis de 2 reglas:
+  - firebase-database.rules.json, pago normal, línea 62
+  - firebase-database.rules.json, pago de reinicio, línea 79
+
+Error original: ! only operates on booleans.
+Causa: ! sobre .val(), que puede devolver null si el ciclo todavía no tiene vacaciones configuradas.
+Corrección: comparar explícitamente con true (".val() !== true").
+Permite pagar si vacaciones no existen o están desactivadas; impide pagar si activas === true.
+
+INSTALACIÓN
+1. Abre este ZIP y copia firebase-database.rules.json en C:\Proyectos\AppAhorro.
+2. Acepta reemplazar ese único archivo.
+3. En PowerShell ejecuta:
+   firebase emulators:exec --project demo-ahorro-grupal --only database "node --test tests-emulator/*.test.mjs"
+
+VALIDACIÓN
+La estructura JSON y la expresión modificada fueron comprobadas estáticamente.
+La compilación REAL de las reglas y las pruebas se deben comprobar en tu emulador de Windows.
+
+No incluye otros cambios, no modifica datos, no hay que publicar en Firebase ni hacer git push todavía.

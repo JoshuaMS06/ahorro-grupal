@@ -1,0 +1,19 @@
+AHORROGRUPAL — CORRECCIÓN DE LA SEMANA ACTUAL EN LOCALHOST
+
+CAUSA:
+La pantalla enviaba todo el objeto del ciclo a semanaPeriodo(), aunque lunesBase y semanaBase están en periodo.meta. Por eso mostraba Semana 1 como valor predeterminado.
+
+CAMBIO ÚNICO:
+src/App.jsx — const semanaActual=semanaPeriodo(periodo?.meta,fecha);
+
+INSTALACIÓN:
+1. Cierra únicamente Vite con Ctrl+C en su ventana (puedes dejar abiertos los emuladores).
+2. Extrae el ZIP directamente en C:\Proyectos\AppAhorro y permite reemplazar src/App.jsx.
+3. En esa carpeta ejecuta los siguientes comandos por separado:
+   npm run lint
+   npm test
+   npm run build
+4. Si pasan, inicia npm run dev y recarga http://localhost:5173.
+5. Asegúrate de seleccionar el ciclo 2026-2027-A. La demostración usa lunesBase=2026-10-19 y semanaBase=4. El 31/10/2026 corresponde a la semana 5 y el 02/11/2026 corresponderá a la semana 6.
+
+Este ZIP NO contiene datos reales, ni cambia Firebase, APIs, reglas, package.json ni dependencias. No hagas git push hasta completar la revisión visual.

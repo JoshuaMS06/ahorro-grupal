@@ -1,0 +1,53 @@
+# AhorroGrupal — Bloque 4.7: Vacaciones con CONFIRMAR (solo validación local)
+
+**No subir todavía a GitHub ni publicar reglas en Firebase.** Esta entrega se superpone al Bloque 4.6 que ya tienes funcionando en `C:\Proyectos\AppAhorro`. No contiene `package.json`, `package-lock.json` ni bases de datos.
+
+## Qué hace
+
+- Solo el administrador general puede iniciar o terminar vacaciones.
+- En **Ciclos y salones → Vacaciones y reanudación**, el administrador elige **Iniciar vacaciones** o **Reanudar clases**. En ambos casos, debe escribir exactamente `CONFIRMAR` (mayúsculas, sin espacios).
+- La pausa conserva la semana actual, impide registrar nuevos pagos (incluidas escrituras de clientes directas en las reglas) y conserva todos los pagos y saldos anteriores.
+- Al reanudar, la semana congelada se mantiene hasta el siguiente domingo en horario México; el siguiente lunes comienza la semana siguiente. No se generan semanas de vacaciones como adeudos.
+- Queda bloqueado el avance semestral mientras haya vacaciones activas; primero hay que reanudar clases.
+- La función de Vercel `api/control-vacaciones.js` vuelve a verificar el token, el UID de administrador general y la palabra `CONFIRMAR` antes de modificar el estado.
+- La tarea programada de semanas usa el calendario del semestre activo, por lo que respeta la pausa.
+- La demo en localhost ejecuta la operación directamente en el **emulador**, porque `npm run dev` no ejecuta las funciones API de Vercel.
+
+## Pruebas en Windows
+
+1. Extrae los archivos del ZIP sobre `C:\Proyectos\AppAhorro`, reemplazando solo los incluidos.
+2. Desde PowerShell, uno por uno:
+
+```powershell
+npm run lint
+npm test
+npm run build
+firebase emulators:exec --project demo-ahorro-grupal --only database "node --test tests-emulator/*.test.mjs"
+```
+
+3. Para revisar la interfaz en localhost, arranca los emuladores Auth y Database en **otra PowerShell**:
+
+```powershell
+firebase emulators:start --project demo-ahorro-grupal --only database,auth
+```
+
+4. En una segunda PowerShell, desde la misma carpeta:
+
+```powershell
+node scripts/crear-demostracion-local.mjs
+npm run dev
+```
+
+5. Entra como `general@pruebas.local` con la contraseña ficticia de la demo. Abre **Ciclos y salones**. Prueba que un texto distinto de `CONFIRMAR` no haga nada, luego confirma la pausa, verifica semana congelada e inhabilitación del registro de pagos, y confirma la reanudación. No uses correos ni datos reales en el emulador.
+
+## Verificaciones realizadas aquí
+
+- 69 pruebas unitarias aprobadas (`node --test tests/*.test.js`).
+- Sintaxis de los módulos de Node y JSX verificada; JSON de reglas válido, expresiones de reglas con paréntesis equilibrados.
+- **Pendiente en tu Windows:** ESLint, compilación Vite y pruebas de reglas Firebase Emulator. No declares listo para producción hasta que pasen y se pruebe el flujo visual.
+
+## Precauciones
+
+- No se elimina ningún pago ni respaldo. En producción se requiere desplegar conjuntamente código y reglas, previa verificación integral y respaldo privado.
+- La pausa no bloquea solicitudes de retiro, que siguen su procedimiento de autorización; afecta las aportaciones semanales y la progresión de semanas.
+- Si el servidor detecta más de un semestre activo, el cron no adivina cuál usar: registra un error para que lo revise el administrador.

@@ -1,0 +1,19 @@
+AHORROGRUPAL — BLOQUE 3 DE VALIDACIÓN LOCAL
+
+1) Guarda el respaldo de Firebase y NO lo subas a GitHub.
+2) Extrae este ZIP sobre C:\Proyectos\AppAhorro (no elimina datos ni carpetas).
+3) PowerShell, un comando por vez:
+   npm install
+   npm test
+   npm run build
+   npm audit
+4) Ejecuta el emulador con las reglas nuevas:
+   firebase emulators:exec --project demo-ahorro-grupal --only database "node --test tests-emulator/roles.rules.test.mjs"
+5) Compara resultados y NO PUBLIQUES todavía hasta validarlos juntos.
+
+INCLUYE: cuotas $20 de generación especial (10 grupo + 10 carrera),
+fondo histórico 507 sólo grupo, panel de fondos, cron semestral programable,
+controles de retiros clasificados por fondo, 33 pruebas unitarias.
+
+No incluye todavía bajas/reingresos ni devoluciones a estudiantes.
+Consulta README.md para detalles y precauciones.

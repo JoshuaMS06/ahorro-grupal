@@ -1,0 +1,24 @@
+AHORROGRUPAL — BLOQUE 4.4 / UN SOLO FONDO (PRUEBA LOCAL)
+
+Cambios:
+- Todas las aportaciones NUEVAS se registran en un solo fondo: carrera.
+- No aparece selector de fondo, ni ahorro particular por salón o generación.
+- Inicio: se elimina la palabra «común». «Avisos» está debajo del formulario de retiro.
+- Los salones nuevos usan por defecto $10; la cuota de una sala ya guardada no se cambia automáticamente.
+- El salón 507 ya no tiene privilegios por ser el 507.
+- El histórico previo (incluidos pagos a $20 con destino previamente especificado)
+  permanece como fue registrado. NO se reclasifica como dinero de carrera ni se borra.
+  El histórico queda disponible solo para consultas del servidor con privilegios.
+  Ningún usuario cliente puede leer /ahorro/integrantes con las reglas nuevas.
+  Se requiere conciliación contable documentada y autorizada antes de una migración
+  que reubique ese importe o cambie una cuota antigua de $20 a $10.
+- Los movimientos antiguos de fondos diferentes a carrera no pueden aprobarse
+  de forma automática; deben revisarse sin borrar el registro.
+
+INSTALACIÓN:
+Extrae solo este parche sobre C:\Proyectos\AppAhorro.
+Los paquetes de dependencias no se incluyen. Ejecuta: npm run lint; npm test;
+npm run build; y firebase emulators:exec --project demo-ahorro-grupal
+--only database "node --test tests-emulator/*.test.mjs".
+NO publiques todavía en GitHub/Vercel/Firebase hasta verificar el emulador,
+la interfaz y, especialmente, la conciliación del historial antiguo.

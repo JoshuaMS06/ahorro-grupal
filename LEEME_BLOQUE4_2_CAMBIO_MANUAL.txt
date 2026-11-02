@@ -1,0 +1,55 @@
+AHORROGRUPAL — BLOQUE 4.2 — CAMBIO MANUAL DE SEMESTRE Y TEXTOS DE INICIO
+VERSIÓN PARA VALIDACIÓN LOCAL — NO PUBLICAR HASTA PROBAR EN WINDOWS
+
+QUÉ CAMBIA
+1. En Inicio ya no aparece la palabra «común». Los textos exactos son:
+   «Gestión del fondo de la carrera» y «Saldo de la carrera.»
+2. En «Ciclos y salones», el botón «Cambiar semestre ahora» sustituye la programación por fecha.
+3. La acción exige escribir exactamente CONFIRMAR y se aplica en ese mismo momento.
+4. La fecha y hora son tomadas en el servidor usando el horario de México, no del navegador.
+5. Si se confirma de martes a domingo, el inicio de las nuevas semanas de aportación
+   queda en el próximo lunes; si se confirma lunes, ese mismo lunes.
+6. Al cambiar: 107->207, 307->407, 507->607, 707->807 y 907->1007.
+   Al terminar décimo, los salones dejan de estar activos, sin borrar el historial.
+7. Los pagos pasados NO se copian, ni se recalculan. La cuota especial de $20 sigue a
+   la generación actual del 507. Los roles de responsables siguen a su generación.
+8. No se permite otro cambio sobre el mismo ciclo ni se permite avanzar si algún salón
+   tiene solicitudes de retiro pendientes o si ya existe el ciclo destino.
+9. Se quitó el cron diario de avance semestral de vercel.json; el cron semanal de
+   aportaciones permanece sin modificaciones.
+
+INSTALACIÓN
+- Copia el contenido de este ZIP en C:\Proyectos\AppAhorro (sobre los archivos originales).
+- NO borres ninguna carpeta. NO reemplaces package.json ni package-lock.json.
+- Los nuevos archivos api/avanzar-semestre.js y lib/avanceInmediato.js son necesarios.
+- NO publiques ni actives la migración sobre la base real todavía.
+
+PRUEBAS EN POWERSHELL (DE UNO EN UNO)
+  npm run lint
+  npm test
+  npm run build
+  firebase emulators:exec --project demo-ahorro-grupal --only database "node --test tests-emulator/*.test.mjs"
+
+PRUEBA VISUAL Y FUNCIONAL SIN DATOS REALES
+- Ventana 1:
+  firebase emulators:start --project demo-ahorro-grupal --only database,auth
+- Ventana 2:
+  node scripts/crear-demostracion-local.mjs
+  npm run dev
+- Inicia sesión en la dirección local como general@pruebas.local con la contraseña
+  de demostración que muestra el script.
+- Abre Ciclos y salones -> Cambiar semestre ahora, escribe CONFIRMAR.
+- Comprueba que aparezcan 207, 407 y 607, sin duplicar pagos.
+- El botón llama a una API LOCAL que usa exclusivamente los emuladores en
+  127.0.0.1:9000 y 127.0.0.1:9099; no toca Firebase real.
+- El script de demostración vuelve a cargar los datos ficticios si necesitas
+  repetir la prueba. NO ejecutes ese script en producción.
+
+SEGURIDAD / VALIDACIÓN PENDIENTE
+- El avance en producción requiere sesión del administrador general.
+- La API usa una transacción atómica de Firebase para el cambio completo.
+- No se ha probado en este entorno la integración con los emuladores ni el build de Vite:
+  faltan dependencias del empaquetador para Linux. Ejecuta esos controles en Windows.
+- Debemos probar visualmente todo y respaldar Firebase antes de cualquier despliegue.
+- Esta actualización no implementa aún Excel, invitación de responsables ni vacaciones;
+  son bloques independientes.

@@ -1,0 +1,64 @@
+AHORROGRUPAL — BLOQUE 4.6: IMPORTAR ALUMNOS DIRECTAMENTE DESDE EXCEL
+VERSIÓN PARA PRUEBAS EN LOCALHOST. NO PUBLICAR AÚN.
+
+IMPORTANTE
+- Este ZIP solo cambia src/App.jsx, añade lib/importarExcel.js y sus pruebas.
+- No contiene ni reemplaza package.json, package-lock.json, reglas de Firebase, cuentas o pagos.
+- NO instales este ZIP eliminando tu carpeta actual; extráelo ENCIMA de C:\Proyectos\AppAhorro.
+- No hagas git push ni despliegues en Firebase o Vercel antes de aprobar las pruebas.
+
+INSTALACIÓN (PowerShell en C:\Proyectos\AppAhorro)
+1. Extrae los archivos del ZIP directamente en esa carpeta, reemplazando si se solicita.
+2. En PowerShell ejecuta, UNO POR UNO:
+   npm install read-excel-file@9.3.14
+   npm run lint
+   npm test
+   npm run build
+   npm audit --omit=dev
+3. Esperado: al menos 61 pruebas unitarias aprobadas y compilación correcta.
+4. Repite las pruebas de seguridad en emulador:
+   firebase emulators:exec --project demo-ahorro-grupal --only database "node --test tests-emulator/*.test.mjs"
+
+PROBAR INTERFAZ CON DATOS FICTICIOS (NUNCA EN PRODUCCIÓN)
+Ventana PowerShell 1:
+   firebase emulators:start --project demo-ahorro-grupal --only database,auth
+Ventana PowerShell 2:
+   node scripts/crear-demostracion-local.mjs
+   npm run dev
+Abre http://localhost:5173, entra con general@pruebas.local / DemoAhorro2026!
+Abre «Ciclos y salones» → «Importar estudiantes desde Excel».
+Selecciona un archivo de prueba .xlsx con hojas nombradas 107, 307, etc.
+Debe mostrar vista previa con cantidad de estudiantes por salón y sus nombres.
+Pulsa «Revisar coincidencias y confirmar altas» y lee el resumen antes de aceptar.
+Vuelve a seleccionar el MISMO archivo: debe indicar 0 altas nuevas y no duplicar personas.
+
+FORMATOS ACEPTADOS
+- Excel .xlsx (no .xls ni CSV en esta fase).
+- Columnas: NOMBRE (obligatoria); N.º CONTROL, MATRÍCULA (opcional).
+- Una hoja por salón (p. ej. 107, 307, 507). Si solo hay una hoja llamada Hoja1,
+  se utilizará el salón que el administrador tenga seleccionado.
+- La hoja «Todos» o «Resumen» se ignora para no duplicar estudiantes.
+- Solo nombre y control se procesan y guardan: NO CURP, sexo, fecha de nacimiento,
+  lugar de nacimiento ni otros campos presentes en el Excel.
+- Archivo máximo 2 MB; 250 estudiantes por salón.
+- La importación usa el ciclo activo que se muestra en pantalla. No crea ciclos ni los reabre.
+
+SEGURIDAD Y LIMITACIONES
+- Solo el administrador general autorizado puede importar.
+- Antes de guardar, se revisan nombres y números de control existentes; los repetidos se omiten.
+- Si hay números de control de personas distintas o conflictos de identificador, la operación se detiene.
+- Las altas se guardan de una en una con transacciones no destructivas.
+- Si falla la conexión a mitad, algunas altas podrían haberse registrado: se informa del progreso.
+  Puedes reimportar el mismo Excel, sin sustituir los datos existentes.
+- Los pagos, saldos, corte desde semana 5, calendarios y roles NO se alteran por este parche.
+- No subir archivos reales con datos personales a repositorios ni compartir capturas con CURP.
+
+VERIFICACIÓN HECHA EN EL ENTORNO DE PREPARACIÓN
+- 61/61 pruebas unitarias aprobadas.
+- ESLint sin errores.
+- Sintaxis JSX correcta.
+- Analizado el archivo histórico de listas: 119 alumnos entre cinco salones; al reimportar
+  sobre el respaldo, los 119 se reconocen como existentes, 0 altas y 0 conflictos.
+- No pude ejecutar aquí la compilación final ni descargar la dependencia npm: el entorno
+  no dispone de acceso al registro npm y faltan componentes nativos de Vite en Linux.
+  La compilación y el emulador DEBEN validarse en Windows antes de publicar.

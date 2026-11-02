@@ -31,3 +31,14 @@ test('el reinicio no se activa silenciosamente sin la marca administrada',()=>{
  assert.equal(corteActivo({'2026-2027-A':{meta:{semanaBase:4}}}),false);
  assert.throws(()=>resumirAhorroReiniciado({},{}),/no ha sido activado/);
 });
+
+test('507 reparte nuevos $20 en $10 de carrera y $10 de su fondo; pagos anteriores conservan su distribución',()=>{
+  const aulas={'2026-2027-A':{'507':{meta:{generacionId:'gen-2026-2027-A-507'},pagosReinicio:{
+    yaRegistrado:pago(5,20),
+    nuevo:{...pago(6,20),fondoGrupo:10,fondoCarrera:10}
+  }}}};
+  const r=resumirAhorroReiniciado(aulas,periodos);
+  assert.equal(r.totalCarrera,30); // Pago previo $20 entero sigue así; nuevo solo $10 a carrera
+  assert.equal(r.totalAhorro507,10);
+  assert.equal(r.generaciones['gen-2026-2027-A-507'].ahorroGrupo,10);
+});

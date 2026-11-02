@@ -1,0 +1,52 @@
+AHORROGRUPAL — BLOQUE FINAL: ACTIVACION CONTABLE SEGURA
+=====================================================
+Fecha: 2026-11-01
+Origen: codigo incluido en AhorroGrupal_RevisionFinal.zip.
+
+OBJETIVO
+- Mantener los cinco salones (107, 307, 507, 707, 907), estudiantes, roles e historiales.
+- Nueva caja de Ingeniería Industrial desde $0; empieza en la semana 5 de 2026-2027-A.
+- No cambiar lunesBase (2026-10-19), semanaBase (4), ni inicioDetalle historico del 507 (6).
+- Con el marcador nuevo, inicioAportaciones usa semana 5 para TODOS los salones.
+- Respetar cuotaSemanal almacenada; 507 tiene $20 semanales, 100% a carrera.
+
+COMO INSTALAR EN LA CARPETA EXISTENTE
+1. Conservar el respaldo privado de Firebase fuera de la carpeta del proyecto.
+2. Extraer el contenido de este ZIP sobre C:\Proyectos\AppAhorro, reemplazando los archivos existentes.
+3. NO eliminar otros archivos de la carpeta (incluyendo los scripts anteriores).
+4. En PowerShell:
+
+   cd C:\Proyectos\AppAhorro
+   npm test
+   npm run lint
+   npm run build
+   git status --short
+
+RESULTADOS ESPERADOS
+- 76 pruebas unitarias aprobadas; cero fallidas.
+- Lint y compilacion sin errores (el aviso de chunks >500 KB no es fatal).
+- Los cambios aparecen SIN publicar en GitHub ni Firebase.
+- La prueba de reglas del emulador anterior (14/14) debe continuar pasando.
+
+CONTROLES AÑADIDOS
+- Nueva API api/activar-reinicio.js: GET verifica la base sin modificarla.
+- POST solo para administrador general autenticado, con CONFIRMAR y respaldo confirmado.
+- Transaccion atomica: conserva los registros, escribe marcador version:1, semanaInicio:5, activadoEn:timestamp.
+- Rechaza si ya hay marcador, salones faltantes, retiros pendientes, pagos nuevos preexistentes,
+  vacaciones activas, calendario distinto o datos faltantes.
+- Boton del administrador para revisar y activar el nuevo ahorro (solo tras despliegue y autorizacion).
+- El cambio de semestre ahora exige CONFIRMAR tambien en la API.
+- No se permite cerrar semestre original antes de activar el nuevo libro contable.
+- El resumen no muestra el legado como saldo actual antes de activar.
+
+SEGURIDAD: NO PUBLICAR AUN
+No ejecutar git push, firebase deploy, ni pulsar la activacion en Firebase real todavia.
+Primero enviar el resultado de npm test, npm run lint y npm run build, y preparar la
+secuencia controlada: reglas compatibles -> despliegue de Vercel -> verificacion
+GET -> confirmacion unica -> comprobacion del saldo $0.
+No adjuntar respaldos de estudiantes ni claves privadas al chat.
+
+IMPORTANTE
+Este paquete fue probado con node --test sobre la logica pura (76/76).
+La compilacion y el lint de React deben validarse en el Windows del usuario,
+ya que el entorno de revision no tiene la misma version de Node que su instalacion.

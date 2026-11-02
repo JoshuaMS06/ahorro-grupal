@@ -1,0 +1,25 @@
+AHORROGRUPAL — PARCHE DIAGNÓSTICO DE PRUEBA INTEGRADA (SOLO EMULADOR)
+========================================================================
+
+ESTE PAQUETE SOLO REEMPLAZA EL ARCHIVO DE PRUEBA.
+NO altera el código de producción ni escribe en Firebase real.
+
+Cambios:
+- Corrige el parámetro REST de acceso al emulador: auth=owner.
+- Agrega mensajes por etapa, controles de tiempo y mensajes de error.
+- Cierra las conexiones del SDK Firebase Admin al terminar, incluso si falla.
+- Aborta la ejecución si detecta credenciales de producción.
+
+INSTRUCCIONES:
+1) Copia el contenido de este ZIP en C:\Proyectos\AppAhorro.
+   Acepta reemplazar "tests-emulator\activar-reinicio.api.test.mjs".
+2) Abre PowerShell dentro de C:\Proyectos\AppAhorro.
+3) Comprueba que está el archivo actualizado:
+   Select-String -Path .\tests-emulator\activar-reinicio.api.test.mjs -Pattern "auth=owner"
+4) Ejecuta:
+   firebase emulators:exec --project demo-ahorro-grupal --only auth,database "node --test tests-emulator/activar-reinicio.api.test.mjs"
+5) Comparte el resultado completo si hay un fallo, especialmente:
+   [DEMO] Error en la etapa: ...
+   AssertionError / Error / failureType / expected / actual
+
+NO subir el código ni publicar reglas hasta confirmar esta prueba.

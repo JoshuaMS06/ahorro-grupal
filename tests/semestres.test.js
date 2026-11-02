@@ -15,7 +15,7 @@ test('sólo se programa para un lunes y al semestre correcto',()=>{
  assert.equal(validarProgramacionCambio({fechaCambio:'2027-02-01',periodoDestino:'2026-2027-B'},'2026-2027-A'),'2027-02-01');
  assert.throws(()=>validarProgramacionCambio({fechaCambio:'2027-02-02',periodoDestino:'2026-2027-B'},'2026-2027-A'));
 });
-test('al avanzar el salón se conserva su cuota guardada, pero solo utiliza fondo de carrera',()=>{
+test('al avanzar el salón 507 se conserva su cuota y desglose mixto',()=>{
  const datos={
    '507':{meta:{nombre:'507',cuotaSemanal:20},integrantes:{s001:{nombre:'Estudiante Uno'}},pagos:{p1:{monto:20,estado:'pagado'}}},
    '307':{meta:{nombre:'307',cuotaSemanal:10},integrantes:{s001:{nombre:'Otra Persona'}},pagos:{p2:{monto:10,estado:'pagado'}}},
@@ -25,7 +25,7 @@ test('al avanzar el salón se conserva su cuota guardada, pero solo utiliza fond
  const plan=prepararAvanceSemestral({periodoOrigen:'2026-2027-A',periodoDestino:'2026-2027-B',salones:datos,instante:1234});
  assert.equal(plan.nuevos['607'].meta.generacionId,GENERACION_ESPECIAL);
  assert.equal(plan.nuevos['607'].meta.cuotaSemanal,20);
- assert.equal(plan.nuevos['607'].meta.tipoAhorro,'carrera');
+ assert.equal(plan.nuevos['607'].meta.tipoAhorro,'mixto');
  assert.equal(plan.nuevos['407'].meta.cuotaSemanal,10);
  assert.equal(plan.nuevos['607'].integrantes.s001.nombre,'Estudiante Uno');
  assert.equal(plan.nuevos['607'].pagos,undefined);

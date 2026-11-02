@@ -1,0 +1,43 @@
+AHORROGRUPAL — BLOQUE 4.1: PANEL GENERAL SIMPLIFICADO
+ESTADO: VALIDACIÓN LOCAL. NO PUBLICAR TODAVÍA.
+
+Alcance REAL de este paquete:
+* Panel de inicio para el admin general: total de la carrera, número de salones y responsables y cuatro accesos directos.
+* El informe API /api/resumen-carrera omite ahorroGrupo y legadoGrupo si el solicitante es admin general; sólo el responsable de la generación especial los recibe.
+* Se ocultan ahorro privado, historial histórico y avisos de retiros privados en la interfaz general.
+* El administrador general sólo puede solicitar y aprobar retiros del fondo de carrera desde la interfaz.
+* Se conserva la vista de ahorro exclusivo para responsables de la generación que comenzó en el 507.
+* Pruebas nuevas para la separación del informe según el rol.
+* En modo demo, la API Vercel no está disponible: el total se calcula localmente con datos ficticios. Una cuenta de responsable no tiene información de otros salones, así que el total general puede ocultarse en la demo.
+
+ARCHIVOS QUE REEMPLAZA/AGREGA:
+src/App.jsx
+src/App.css
+api/resumen-carrera.js
+lib/informeRoles.js (nuevo)
+tests/informeRoles.test.js (nuevo)
+
+PASOS:
+1. Conservar un respaldo externo a Git y cerrar npm run dev, si sigue abierto (Ctrl+C).
+2. Extraer ZIP directamente sobre C:\Proyectos\AppAhorro, SIN borrar la carpeta.
+3. En PowerShell, dentro de esa carpeta, ejecutar por separado:
+   npm run lint
+   npm test
+   npm run build
+   firebase emulators:exec --project demo-ahorro-grupal --only database "node --test tests-emulator/*.test.mjs"
+4. Para probar UI: mantener el emulador database,auth abierto, crear demo local como en el bloque anterior y ejecutar npm run dev.
+5. Abrir http://localhost:5173, iniciar sesión con general@pruebas.local. Confirmar que el inicio solo muestre fondo de carrera, responsables y acciones.
+6. Con responsable107@pruebas.local revisar acceso al 107; la prueba especial del 507 requiere una cuenta responsable del 507 en el emulador.
+
+ADVERTENCIA DE SEGURIDAD IMPORTANTE:
+* Este bloque evita exponer saldo privado EN EL INFORME API Y EN LAS PANTALLAS DEL GENERAL, pero NO constituye todavía aislamiento de seguridad de la base de datos. Las reglas vigentes permiten al admin general leer aulas y pagos sin separar los dos fondos. Para privacidad real se necesita migrar el fondo privado a una ruta específica con reglas de autorización exclusivas y verificar que los endpoints de retiros aplican las mismas restricciones.
+* Los retiros del fondo privado quedan fuera del panel del general, pero su aprobación por un responsable aún NO está implementada. No activar retiros privados en producción hasta concluir esa etapa.
+* La creación de responsables por correo, importación de Excel, cambio semestral con CONFIRMAR y pausa por vacaciones son bloques siguientes; no se implementan aquí.
+* No hacer git push ni publicar reglas en Firebase hasta validar todos los cambios relacionados.
+* No se incluyen package.json ni package-lock.json; se mantienen los overrides que el usuario ya validó en Windows.
+
+PRUEBAS EJECUTADAS EN ESTE ENTORNO:
+* 37/37 pruebas unitarias aprobadas.
+* ESLint 0 errores/0 advertencias.
+* JSX válido con @babel/parser, sintaxis de API válida.
+* No se completó Vite build aquí porque faltaba binario Linux del compilador rolldown en node_modules extraídos de Windows. Debe ejecutarse en Windows.

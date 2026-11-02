@@ -1,0 +1,52 @@
+AHORROGRUPAL — BLOQUE 4.3: RESPONSABLES SIN UID
+VERSIÓN PARA PRUEBAS LOCALES — NO PUBLICAR EN PRODUCCIÓN
+
+QUÉ CAMBIA
+- El administrador general ve SOLO el semestre seleccionado y sus salones activos.
+- Cada plaza permite registrar Nombre y Correo; nunca se solicita el UID.
+- El servidor comprueba que el usuario sea admin general y que la plaza esté disponible, crea o vincula la cuenta en Firebase Authentication y asigna los permisos de forma atómica.
+- Para una CUENTA NUEVA, la aplicación solicita a Firebase el envío de un mensaje para establecer contraseña (usa recuperación de contraseña, no envía contraseñas temporales).
+- Para una CUENTA YA EXISTENTE, se conserva su contraseña. Si hace falta, el administrador puede pulsar «Enviar acceso de nuevo».
+- Revocar solo elimina acceso del salón; no elimina la cuenta de Auth ni pagos/alumnos.
+- El avance de semestre del Bloque 4.2 ya transfiere automáticamente el UID asignado al nuevo salón y período. La interfaz no necesita mostrar ese identificador.
+- No cambia package.json, package-lock.json, reglas de Firebase, ahorros, pagos ni listas.
+
+INSTALACIÓN
+1. NO publiques nada aún en GitHub, Vercel ni Firebase.
+2. Ten a salvo tu respaldo privado de Firebase. No está dentro del ZIP.
+3. Extrae este ZIP directamente en C:\Proyectos\AppAhorro; sustituye SOLO los archivos que incluye.
+4. En PowerShell, dentro de esa carpeta, ejecuta UNO POR UNO:
+   npm run lint
+   npm test
+   npm run build
+   firebase emulators:exec --project demo-ahorro-grupal --only database "node --test tests-emulator/*.test.mjs"
+5. Antes de usar cuentas reales, prueba el flujo completo en la demo.
+
+PRUEBA SIN FIREBASE REAL
+Ventana PowerShell 1:
+   cd C:\Proyectos\AppAhorro
+   firebase emulators:start --project demo-ahorro-grupal --only database,auth
+
+Ventana PowerShell 2:
+   cd C:\Proyectos\AppAhorro
+   node scripts/crear-demostracion-local.mjs
+   npm run dev
+
+Abre http://localhost:5173 y entra como admin ficticio:
+   general@pruebas.local / DemoAhorro2026!
+
+En la pestaña Responsables: en el salón 107, plaza 2, prueba un nombre ficticio y un email de prueba (ej. ejemplo107@pruebas.local). Presiona «Crear acceso / invitar».
+- La cuenta y los roles se crean ÚNICAMENTE en los emuladores.
+- El correo NO sale a Internet. La terminal del emulador de Auth muestra el enlace de restablecimiento. Puedes copiarlo para probar el establecimiento de contraseña.
+- Comprueba que el nuevo responsable solo ve el salón 107.
+- Revoca su plaza desde el administrador, recarga la sesión del responsable y comprueba que ya no tiene acceso.
+- Prueba asimismo que no se pueda crear un tercer responsable ni asignar la misma cuenta a dos plazas.
+- NO pruebes estos pasos en la base real.
+
+PRECAUCIONES
+- La API es /api/responsables. Requiere un ID token válido y comprueba contra roles/adminGeneralUid.
+- En producción la cuenta de servicio ya configurada en Vercel es imprescindible; no se copia ni se incluye en este ZIP.
+- La creación de la cuenta Auth y la asignación de permisos son dos operaciones separadas. Si se crea una cuenta y luego falla la asignación, la cuenta queda sin permisos; al reintentar, puede vincularse y usarse «Enviar acceso de nuevo».
+- La privacidad completa del ahorro particular del 507 en las reglas reales de Firebase aún necesita revisión independiente. NO desplegar antes de validarla.
+- No se incluyen en este bloque el importador Excel ni los botones de vacaciones; se implementarán tras aprobar esta etapa.
+- La compilación en Linux no se verificó porque falta una dependencia nativa de Rolldown en este entorno. Debe aprobarse en Windows antes de avanzar.

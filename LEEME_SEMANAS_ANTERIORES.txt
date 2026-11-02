@@ -1,0 +1,42 @@
+AHORROGRUPAL - SEMANAS ANTERIORES Y PAGOS ATRASADOS
+Bloque para validar LOCALMENTE; NO actualizar produccion hasta aprobar.
+
+FUNCIONALIDAD
+- En el periodo 2026-2027-A activo, el selector permite semanas 1,2,3,4,5 y las siguientes que realmente hayan transcurrido.
+- Semanas 1-4: captura a /aulas/2026-2027-A/<salon>/pagosAnteriores, separada del fondo NUEVO.
+- Semanas 5+: siguen en /pagosReinicio y suman al fondo de la carrera.
+- Las semanas 1-4 NO generan deuda automatica. Cada pago se registra solo si se decide capturarlo.
+- Los registros antiguos en /pagos se mantienen. Si ya existe un pago vigente en /pagos para ese estudiante y semana, el sistema lo reconoce y bloquea duplicarlo.
+- Cuota existente de 507 sigue en 20; salones con cuota guardada 10 siguen en 10.
+- Cancelar pagos nuevos requiere administrador general y motivo, preservando historial.
+- El calendario automatico por lunes de Mexico se conserva sin cambios.
+
+INSTALACION
+1. Extraer este ZIP directamente en C:\Proyectos\AppAhorro (sin carpeta extra).
+2. NO ejecutar git push, firebase deploy ni editar datos de Firebase real.
+3. Ejecutar:
+   cd C:\Proyectos\AppAhorro
+   npm test
+   npm run lint
+   npm run build
+4. En PowerShell con emuladores NO abiertos ejecutar las reglas (en demo):
+   firebase emulators:exec --project demo-ahorro-grupal --only auth,database "node --test tests-emulator/roles.rules.test.mjs"
+   Esperado: 18/18 pruebas.
+5. Para revisar la interfaz local:
+   Terminal A: firebase emulators:start --project demo-ahorro-grupal --only auth,database
+   Terminal B:
+       cd C:\Proyectos\AppAhorro
+       node scripts/crear-demostracion-local.mjs
+       $env:FIREBASE_DATABASE_EMULATOR_HOST='127.0.0.1:9000'
+       node scripts/habilitar-historico-solo-emulador.mjs
+       Remove-Item Env:FIREBASE_DATABASE_EMULATOR_HOST
+       npm run dev
+   Entrar a http://localhost:5173 con la cuenta demo ya utilizada anteriormente.
+   Comprobar selector semana 1, pago anterior, anulacion con motivo y que el saldo NUEVO no cambie.
+6. Solo tras validar los resultados, crear un commit. Coordinar reglas y Vercel ANTES de cobrar en produccion.
+
+ADVERTENCIA CONTABLE
+Los montos de semanas 1-4 quedan como REGISTRO HISTORICO y NO representan efectivo disponible
+ni aumentan el saldo nuevo. Si ahora ingresa dinero real correspondiente a un atraso anterior,
+verificar con el responsable contable donde se guarda ese efectivo; no mezclen la caja historica
+con el fondo reiniciado de la carrera sin una decision explicita.

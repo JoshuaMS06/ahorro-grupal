@@ -11,6 +11,7 @@ import {
 import { cuotaDeSalon, esLunes, estadoSemana, fechaMexico, isClassCode, isPeriodId, pagoClave, semanaPeriodo } from '../lib/aulas.js';
 import {corteActivo, esPeriodoReinicio, rutaPagos, rutaRetiros, inicioAportaciones, resumirAhorroReiniciado} from '../lib/reinicioContable.js';
 import {esSemanaAnterior, rutaPagoSeleccionado, primeraSemanaVisible, esPagoLegado, resumenPagosAnteriores} from '../lib/pagosAnteriores.js';
+import {PROFESORES, CUOTA_PROFESOR, claveSemanaProfesor, resumenAcumuladoProfesor, crearPagoProfesor, esPagoProfesorAnterior} from '../lib/profesoresAhorro.js';
 import { nombreParaMostrar, normalizarBusquedaNombre } from '../lib/nombres.js';
 import { esResponsableDeSalon } from '../lib/roles.js';
 import { distribucionNueva, generacionDeAula, resumirFondos } from '../lib/fondos.js';
@@ -38,11 +39,6 @@ if (usarEmuladores) {
   connectAuthEmulator(auth, 'http://127.0.0.1:9099', {disableWarnings: true});
   connectDatabaseEmulator(database, '127.0.0.1', 9000);
 }
-const PROFESORES = [
-  'Ubaldo Jerónimo Carrera', 'Nicolas Hernández Ruiz', 'Rafael Rios Esperanza',
-  'Francisco Javier Sol Sampedro', 'Eduardo Martínez Mendoza',
-  'Néstor Hernández Silva', 'Adán Acosta Banda', 'Tania Castillo Villegas',
-];
 const pesos = v => new Intl.NumberFormat('es-MX',{ style:'currency',currency:'MXN',maximumFractionDigits:0 }).format(Number(v)||0);
 const fechaLarga = t => t ? new Intl.DateTimeFormat('es-MX',{dateStyle:'medium',timeStyle:'short',timeZone:'America/Mexico_City'}).format(new Date(t)) : 'Sin fecha';
 const avisoError = err => {
@@ -103,6 +99,9 @@ export default function App() {
   const [vista,setVista]=useState('panel');
   const [fecha,setFecha]=useState(()=>Date.now());
   const [semanaElegida,setSemanaElegida]=useState(0);
+  const [semanaProfesorElegida,setSemanaProfesorElegida]=useState(0);
+  const [pagosProfesores,setPagosProfesores]=useState({});
+  const [errorProfesores,setErrorProfesores]=useState('');
   const [mostrarMenu,setMostrarMenu]=useState(false);
   const [nuevoPeriodo,setNuevoPeriodo]=useState({id:'',lunesBase:'',semanaBase:1});
   const [nuevoSalon,setNuevoSalon]=useState('');
@@ -175,6 +174,12 @@ export default function App() {
     return ()=>stop1();
   },[esAdminGeneral]);
   useEffect(()=>{
+    if(!esAdminGeneral || vista!=='profesores')return;
+    const stop=onValue(ref(database,'profesoresAhorro'),snap=>{setPagosProfesores(snap.val()||{});setErrorProfesores('');},
+      err=>setErrorProfesores(`No se pudo consultar el ahorro de profesores: ${avisoError(err)}`));
+    return ()=>stop();
+  },[esAdminGeneral,vista,periodoId]);
+  useEffect(()=>{
     if(!esAdminGeneral||!usuario||vista!=='roles')return;
     let cancelado=false;
     const cargar=async()=>{
@@ -217,6 +222,7 @@ export default function App() {
   const semanaMinima=primeraSemanaVisible(periodos,periodoId,periodo?.meta,datos?.meta);
   const semana=Math.max(semanaMinima,Math.min(semanaElegida||semanaActual,semanaActual));
   const cuotaSemanal=cuotaDeSalon(salonId,datos?.meta);
+  const semanaProfesor=Math.max(1,Math.min(semanaProfesorElegida||semanaActual,semanaActual));
   const generacionId=generacionDeAula(periodoId,salonId,datos?.meta);
   const integrantes=useMemo(()=>datos?.integrantes||{},[datos]);
   const lista=useMemo(()=>Object.entries(integrantes).map(([id,v])=>({id,...v,nombreVisible:nombreParaMostrar(v.nombre,id,v.formatoNombre)})).sort((a,b)=> a.nombreVisible.localeCompare(b.nombreVisible,'es',{sensitivity:'base'}) || a.nombre.localeCompare(b.nombre,'es') || a.id.localeCompare(b.id)),[integrantes]);
@@ -452,6 +458,41 @@ export default function App() {
       return r.committed?'Pago anulado; queda registrado en el historial.':'El pago ya no estaba activo.';
     });
   };
+  const registrarPagoProfesor=async profesor=>{
+    if(!esAdminGeneral || vacacionesActivas || periodo?.meta?.cerradoEn ||
+       (periodoId==='2026-2027-A'&&!ahorroNuevoActivo))return;
+    await withOperation(`profesor:${profesor.id}`,async()=>{
+      const ruta=`profesoresAhorro/${periodoId}/${profesor.id}`;
+      const folio=push(ref(database,ruta)).key;
+      const clave=claveSemanaProfesor(semanaProfesor);
+      const tx=await runTransaction(ref(database,`${ruta}/${clave}`),v=>{
+        if(v?.estado==='pagado')return;
+        const ahora=Date.now();
+        if(v?.estado==='anulado')return {...v,estado:'pagado',registradoPor:usuario.uid,
+          historial:{...(v.historial||{}),[folio]:{tipo:'registro',fecha:ahora,uid:usuario.uid}}};
+        return crearPagoProfesor(profesor.id,semanaProfesor,usuario.uid,folio,ahora,periodoId);
+      },{applyLocally:false});
+      return tx.committed?`Profesor: ${profesor.nombre}. Semana ${semanaProfesor}, ${pesos(CUOTA_PROFESOR)} registrados en su ahorro independiente.`:'Este pago ya se había registrado.';
+    });
+  };
+  const anularPagoProfesor=async profesor=>{
+    if(!esAdminGeneral || vacacionesActivas || periodo?.meta?.cerradoEn)return;
+    const motivo=window.prompt(`Motivo para anular el ahorro de ${profesor.nombre} en la semana ${semanaProfesor}:`);
+    if(motivo===null)return;
+    if(motivo.trim().length<5){setToast('Escribe un motivo de al menos 5 caracteres.');return;}
+    await withOperation(`anular-profesor:${profesor.id}`,async()=>{
+      const ruta=`profesoresAhorro/${periodoId}/${profesor.id}`;
+      const folio=push(ref(database,ruta)).key;
+      const tx=await runTransaction(ref(database,`${ruta}/${claveSemanaProfesor(semanaProfesor)}`),v=>{
+        if(v?.estado!=='pagado')return;
+        const ahora=Date.now();
+        return {...v,estado:'anulado',anuladoEn:ahora,anuladoPor:usuario.uid,
+          correcciones:(v.correcciones||0)+1,
+          historial:{...(v.historial||{}),[folio]:{tipo:'anulacion',fecha:ahora,uid:usuario.uid,motivo:motivo.trim()}}};
+      },{applyLocally:false});
+      return tx.committed?'Pago de profesor anulado; se conserva en su historial.':'El pago ya no estaba activo.';
+    });
+  };
   const solicitarRetiro=async e=>{
     e.preventDefault();if(!esAdmin||periodo?.meta?.cerradoEn||(periodoId==='2026-2027-A'&&!ahorroNuevoActivo))return;
     const valor=Number(retiro.monto);
@@ -665,6 +706,7 @@ export default function App() {
             </div>
             <div className="ag-stats"><div><CircleDollarSign size={21}/><strong>{pesos(cuotaSemanal)}</strong><span>Por semana</span></div><div><UsersRound size={21}/><strong>{cargando?'—':lista.length}</strong><span>Integrantes</span></div><div><CheckCircle2 size={21}/><strong>{vigenteParaRegistrar?pagaron:'—'}</strong><span>Pagaron esta semana</span></div></div>
           </section>
+          {generacionId==='gen-2026-2027-A-507'&&<div className="ag-note"><Wallet size={17}/> De los {pesos(cuotaSemanal)} del salón 507, <strong>$10 corresponden a carrera y $10 al ahorro independiente del grupo.</strong> Ahorro nuevo acumulado del grupo: <strong>{reporteFondos?pesos(reporteFondos.ahorroPropioSalon):'—'}</strong>. Los pagos ya registrados conservan su desglose original.</div>}
           {esCorteEnSalon&&<div className="ag-note"><History size={17}/> El fondo nuevo comienza en la semana 5. Las semanas 1 a 4 pueden capturarse como «Pagos anteriores», sin generar adeudos automáticos ni sumar al saldo actual.</div>}
           {periodoId==='2026-2027-A'&&!ahorroNuevoActivo&&<div className="ag-error"><AlertTriangle size={17}/> El reinicio contable de la semana 5 aún no está activado. No registres movimientos hasta completar la migración segura.{esAdminGeneral&&<div style={{marginTop:12}}><SmallButton disabled={!!operacion} onClick={activarReinicioSeguro}><ShieldCheck size={16}/> Revisar y activar ahorro nuevo</SmallButton></div>}</div>}
           <Panel title="Ahorro de la carrera" icon={Wallet}>
@@ -681,7 +723,7 @@ export default function App() {
           </Panel>
 
           {!datos?.meta && !cargando&&<div className="ag-empty"><BookOpen size={31}/><h3>Este salón todavía no está configurado</h3><p>Un administrador debe importar la lista del Excel o crear un salón en «Ciclos y salones».</p><SmallButton onClick={()=>setVista('gestion')}>Ver configuración</SmallButton></div>}
-          {datos?.meta&&<Panel title={esAnterior?'Pagos anteriores · registro semanal':'Registro semanal'} icon={CalendarClock} action={<div className="ag-week-select"><button type="button" onClick={()=>setSemanaElegida(Math.max(semanaMinima,semana-1))} disabled={semana<=semanaMinima}>‹</button><select value={semana} onChange={e=>setSemanaElegida(Number(e.target.value))}>{Array.from({length:Math.max(semanaActual-semanaMinima+1,1)},(_,i)=>i+semanaMinima).reverse().map(n=><option key={n} value={n}>Semana {n}{esCorteEnSalon&&n<5?' · Anterior':''}</option>)}</select><button type="button" onClick={()=>setSemanaElegida(Math.min(semanaActual,semana+1))} disabled={semana>=semanaActual}>›</button>{semana!==semanaActual&&<button type="button" title="Volver a la semana actual" onClick={()=>setSemanaElegida(0)}>Hoy</button>}</div>}>
+          {datos?.meta&&<Panel title={esAnterior?'Pagos anteriores · registro semanal':'Registro semanal'} icon={CalendarClock} action={<div className="ag-week-select"><button type="button" onClick={()=>setSemanaElegida(Math.max(semanaMinima,semana-1))} disabled={semana<=semanaMinima}>‹</button><select value={semana} onChange={e=>setSemanaElegida(Number(e.target.value))}>{Array.from({length:Math.max(semanaActual-semanaMinima+1,1)},(_,i)=>i+semanaMinima).reverse().map(n=><option key={n} value={n}>Semana {n}</option>)}</select><button type="button" onClick={()=>setSemanaElegida(Math.min(semanaActual,semana+1))} disabled={semana>=semanaActual}>›</button>{semana!==semanaActual&&<button type="button" className="ag-week-current" title="Volver a la semana actual" onClick={()=>setSemanaElegida(0)}>Actual</button>}</div>}>
             {esAnterior&&<div className="ag-note"><History size={16}/> Semana {semana}: registra aquí los pagos atrasados del periodo anterior al reinicio. Se guardan como historial independiente, no generan adeudos automáticos y NO aumentan el saldo de la carrera. Si ya había un pago anterior registrado, se respeta y no se duplica.</div>}
             <div className="ag-toolbar"><label className="ag-search"><Search size={17}/><input placeholder="Buscar por nombre o control..." value={search} onChange={e=>setSearch(e.target.value)}/></label><div className="ag-filters"><button className={filtro==='todos'?'active':''} onClick={()=>setFiltro('todos')}>Todos</button><button className={filtro==='pagado'?'active':''} onClick={()=>setFiltro('pagado')}>Pagaron</button><button className={filtro==='pendiente'?'active':''} onClick={()=>setFiltro('pendiente')}>{esAnterior?'Sin registrar':'Pendientes'}</button></div></div>
             {!vigenteParaRegistrar&&<div className="ag-note"><History size={16}/> Esta semana corresponde al historial anterior o a un periodo sin registros detallados. No se muestran supuestos adeudos.</div>}
@@ -707,7 +749,36 @@ export default function App() {
           </div>
           {!Object.keys(periodos[periodoId]?.salones||{}).length&&<p className="ag-muted">Selecciona un semestre con salones activos.</p>}
         </Panel>}
-        {vistaActiva==='profesores'&&<Panel title="Directorio de profesores" icon={GraduationCap}><p className="ag-muted">Profesores proporcionados para Ingeniería Industrial. No se incluyen en los cálculos de aportaciones.</p><div className="ag-prof-grid">{PROFESORES.map(n=><div key={n} className="ag-prof"><span className="ag-avatar"><GraduationCap size={20}/></span><strong>{n}</strong></div>)}</div></Panel>}
+        {vistaActiva==='profesores'&&esAdminGeneral&&<Panel title="Ahorro individual de profesores" icon={GraduationCap}
+          action={<div className="ag-week-select ag-week-select-docentes">
+            <button type="button" aria-label="Semana anterior" disabled={semanaProfesor<=1} onClick={()=>setSemanaProfesorElegida(Math.max(1,semanaProfesor-1))}>‹</button>
+            <select aria-label="Semana de profesores" value={semanaProfesor} onChange={e=>setSemanaProfesorElegida(Number(e.target.value))}>
+              {Array.from({length:semanaActual},(_,i)=>i+1).reverse().map(n=><option key={n} value={n}>Semana {n}</option>)}
+            </select>
+            <button type="button" aria-label="Semana siguiente" disabled={semanaProfesor>=semanaActual} onClick={()=>setSemanaProfesorElegida(Math.min(semanaActual,semanaProfesor+1))}>›</button>
+            {semanaProfesor!==semanaActual&&<button className="ag-week-current" type="button" onClick={()=>setSemanaProfesorElegida(0)}>Actual</button>}
+          </div>}>
+          <p className="ag-muted">Cada profesor aporta <strong>{pesos(CUOTA_PROFESOR)} por semana</strong> a su ahorro personal, separado del fondo de la carrera y del ahorro del salón 507. Las semanas anteriores se pueden seleccionar sin generar adeudos automáticos.</p>
+          {esPagoProfesorAnterior(periodoId,semanaProfesor)&&<div className="ag-note"><History size={16}/> Esta semana es histórica: los registros no se incorporan al ahorro nuevo de cada profesor.</div>}
+          {errorProfesores&&<div className="ag-error"><AlertTriangle size={17}/>{errorProfesores}</div>}
+          <div className="ag-prof-grid">
+            {PROFESORES.map(profesor=>{
+              const registros=pagosProfesores[periodoId]?.[profesor.id]||{};
+              const estado=registros[claveSemanaProfesor(semanaProfesor)]?.estado;
+              const resumen=resumenAcumuladoProfesor(pagosProfesores,profesor.id);
+              return <div key={profesor.id} className="ag-prof ag-prof-saving">
+                <span className="ag-avatar"><GraduationCap size={20}/></span>
+                <div className="ag-prof-details"><strong>{profesor.nombre}</strong><small>Ahorro vigente: {pesos(resumen.saldo)} · Histórico: {pesos(resumen.historico)}</small><small>Semana {semanaProfesor} · Cuota {pesos(CUOTA_PROFESOR)}</small></div>
+                <span className={`ag-status ag-status-${estado==='pagado'?'pagado':'pendiente'}`}>{estado==='pagado'?'Pagó':'Sin registrar'}</span>
+                {esAdminGeneral && !vacacionesActivas && !periodo?.meta?.cerradoEn && (periodoId!=='2026-2027-A'||ahorroNuevoActivo) &&
+                  <div className="ag-pay-actions">{estado==='pagado'
+                    ? <button type="button" aria-label={`Anular aporte de ${profesor.nombre}`} disabled={!!operacion} onClick={()=>anularPagoProfesor(profesor)}><Minus size={17}/></button>
+                    : <button type="button" aria-label={`Registrar aporte de ${profesor.nombre}`} disabled={!!operacion} onClick={()=>registrarPagoProfesor(profesor)}><Plus size={17}/></button>}</div>}
+              </div>;
+            })}
+          </div>
+        </Panel>}
+        {vistaActiva==='profesores'&&!esAdminGeneral&&<Panel title="Profesores" icon={GraduationCap}><p className="ag-muted">El control de ahorros personales de profesores está reservado al administrador general. No se incorpora al fondo de carrera.</p><div className="ag-prof-grid">{PROFESORES.map(p=><div className="ag-prof" key={p.id}><span className="ag-avatar"><GraduationCap size={20}/></span><strong>{p.nombre}</strong></div>)}</div></Panel>}
         {vistaActiva==='gestion'&&<><Panel title="Ciclos escolares y salones" icon={BookOpen}><p className="ag-muted">Los ciclos se conservan por separado. Un ciclo nuevo empieza sin pagos ni retiros; no borra el anterior.</p>{esAdminGeneral&&periodo?.meta&&!periodo?.meta?.cerradoEn&&<div className="ag-archive-action"><SmallButton disabled={!!operacion||vacacionesActivas} onClick={cerrarCiclo}>Archivar ciclo al terminar la semana actual</SmallButton></div>}<div className="ag-period-grid">{periodKeys.map(id=><button disabled={!esAdminGeneral} className={periodoId===id?'active':''} key={id} onClick={()=>cambiarPeriodo(id)}><strong>{periodos[id]?.meta?.nombre||id}</strong><span>{Object.keys(periodos[id]?.salones||{}).length} salones</span></button>)}</div></Panel>{esAdminGeneral?<><Panel title="Importar estudiantes desde Excel" icon={FileSpreadsheet}>
           <p className="ag-muted">Sube un Excel (.xlsx) con columnas <strong>NOMBRE</strong> y, opcionalmente, <strong>N.º CONTROL</strong>. Una hoja por salón (107, 307, etc.). La hoja «Todos» se ignora para evitar duplicados. Si el archivo tiene una sola hoja sin número de salón, se usará el salón seleccionado arriba.</p>
           <p className="ag-note">Ciclo destino: <strong>{periodoId}</strong>. Solo se agregarán estudiantes nuevos; nunca se borrarán ni modificarán personas, aportaciones o saldos existentes. CURP y fechas de nacimiento no se importan.</p>
