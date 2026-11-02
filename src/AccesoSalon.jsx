@@ -26,10 +26,12 @@ export default function AccesoSalon({abrirLogin,ingresarConCodigo,ocupado,error,
 
   const seleccionado=salones.find(s=>`${s.periodo}/${s.salon}`===seleccion);
   const normalizado=codigo.replace(/[\s-]/g,'').toUpperCase();
+  // Los códigos largos existentes se aceptan hasta que el administrador los cambie.
+  const codigoValido=/^\d{4}$|^\d{8}$|^[A-HJ-NP-Z2-9]{16}$/.test(normalizado);
 
   const enviar=e=>{
     e.preventDefault();
-    if(seleccionado&&normalizado.length===16&&!ocupado){
+    if(seleccionado&&codigoValido&&!ocupado){
       void ingresarConCodigo({...seleccionado,codigo:normalizado});
     }
   };
@@ -53,17 +55,17 @@ export default function AccesoSalon({abrirLogin,ingresarConCodigo,ocupado,error,
           </button>)}
         </div>}
       <form className="ag-access-code-form" onSubmit={enviar}>
-        <h2 className="ag-access-subtitle">2. Introduce el código de tu salón</h2>
-        <p className="ag-muted">Pídelo al responsable o al administrador general. El código es diferente en cada salón.</p>
+        <h2 className="ag-access-subtitle">2. Introduce los 4 dígitos de tu salón</h2>
+        <p className="ag-muted">Pide el PIN de 4 dígitos al responsable o al administrador general. Cada salón tiene el suyo.</p>
         <label className="ag-access-code-label">
           <span><KeyRound size={18}/> Código de acceso {seleccionado?`· salón ${seleccionado.salon}`:''}</span>
-          <input type="text" autoComplete="one-time-code" autoCapitalize="characters"
-            spellCheck={false} placeholder="XXXX-XXXX-XXXX-XXXX"
-            value={codigo} onChange={e=>setCodigo(e.target.value.toUpperCase().slice(0,28))}
-            maxLength={28} disabled={!seleccionado||ocupado} required/>
+          <input type="text" inputMode="numeric" enterKeyHint="go" autoComplete="off" autoCapitalize="characters"
+            spellCheck={false} placeholder="••••"
+            value={codigo} onChange={e=>setCodigo(e.target.value.toUpperCase().slice(0,19))}
+            maxLength={19} disabled={!seleccionado||ocupado} required/>
         </label>
         <button type="submit" className="ag-btn ag-btn-primary ag-access-code-submit"
-          disabled={!seleccionado||normalizado.length!==16||ocupado}>
+          disabled={!seleccionado||!codigoValido||ocupado}>
           <LockKeyhole size={19}/> {ocupado?'Comprobando código…':`Entrar al salón ${seleccionado?.salon||''}`}
         </button>
       </form>
