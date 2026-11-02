@@ -1,4 +1,4 @@
-import {useEffect,useState} from 'react';
+import {useCallback,useEffect,useState} from 'react';
 import {Check,LockKeyhole,RefreshCcw,ShieldCheck,X} from 'lucide-react';
 
 const fecha=t=>t?new Intl.DateTimeFormat('es-MX',{dateStyle:'medium',timeStyle:'short',timeZone:'America/Mexico_City'}).format(new Date(t)):'';
@@ -10,7 +10,7 @@ export default function AccesosAdministracion({usuario}) {
   const [ocupado,setOcupado]=useState('');
   const [error,setError]=useState('');
   const [mensaje,setMensaje]=useState('');
-  const cargar=async()=>{
+  const cargar=useCallback(async()=>{
     if(!usuario)return;
     setCargando(true);setError('');
     try{
@@ -25,8 +25,8 @@ export default function AccesosAdministracion({usuario}) {
       setSolicitudes(a.solicitudes||[]);setSalones(b.salones||[]);
     }catch(e){setError(e.message);}
     finally{setCargando(false);}
-  };
-  useEffect(()=>{void cargar();},[usuario]);
+  },[usuario]);
+  useEffect(()=>{const t=setTimeout(()=>{void cargar();},0);return ()=>clearTimeout(t);},[cargar]);
   const actuar=async(s,accion)=>{
     if(ocupado)return;
     if(accion==='aprobar'&&!window.confirm(`¿Permitir a ${s.correo} consultar solamente el salón ${s.salon}?`))return;
