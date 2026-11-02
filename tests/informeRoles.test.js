@@ -25,3 +25,15 @@ test('el responsable de otra generación no recibe fondo privado',()=>{
 test('no existen informes sin rol válido',()=>{
  assert.throws(()=>informeVisibleSegunRol(resumen,null,GENERACION_ESPECIAL));
 });
+
+test('lector del 507 ve solamente los importes de su generación y la carrera',()=>{
+ const r=informeVisibleSegunRol(resumen,{tipo:'lector'},GENERACION_ESPECIAL);
+ assert.equal(r.totalCarrera,250);
+ assert.equal(r.aportacionCarrera,150);
+ assert.equal('legadoGrupo' in r,false);
+});
+test('lector de otro salón no recibe ahorro privado del 507',()=>{
+ const r=informeVisibleSegunRol(resumen,{tipo:'lector'},'otra');
+ assert.equal(r.ahorroPropioSalon,0);
+ assert.equal('ahorroGrupo' in r,false);
+});

@@ -165,6 +165,59 @@ try {
     await assertFails(set(ref(general,p),null));
     assert.equal((await get(ref(general,p))).val().estado,'anulado');
   });
+  // Lectores no tienen permisos antes de la aprobación administrativa.
+  await env.withSecurityRulesDisabled(ctx=>set(ref(ctx.database(),'periodos/2026-2027-A/salones'),{
+    '107':{nombre:'Salón 107'},'307':{nombre:'Salón 307'},'507':{nombre:'Salón 507'}
+  }));
+  const alumno107=env.authenticatedContext('alumno107',{email_verified:true}).database();
+  const alumnoSinVerificar=env.authenticatedContext('alumnoSinVerificar',{email_verified:false}).database();
+  const alumno507=env.authenticatedContext('alumno507',{email_verified:true}).database();
+  const solicitud107={periodo:'2026-2027-A',salon:'107',estado:'pendiente',creadoEn:1100};
+  await test('alumno sin verificar no puede solicitar acceso ni leer datos',async()=>{
+    await assertFails(set(ref(alumnoSinVerificar,'solicitudesSalon/alumnoSinVerificar'),solicitud107));
+    await assertFails(get(ref(alumnoSinVerificar,'aulas/2026-2027-A/107')));
+    await assertFails(get(ref(invitado,'aulas/2026-2027-A/507')));
+  });
+  await test('solicitud verificada queda bloqueada sin poder cambiar grupo',async()=>{
+    await assertSucceeds(set(ref(alumno107,'solicitudesSalon/alumno107'),solicitud107));
+    await assertSucceeds(get(ref(alumno107,'solicitudesSalon/alumno107')));
+    await assertFails(get(ref(alumno107,'aulas/2026-2027-A/107')));
+    await assertFails(set(ref(alumno107,'solicitudesSalon/alumno107'),{...solicitud107,salon:'507'}));
+    await assertFails(set(ref(alumno107,'roles/lectores/alumno107'),{periodo:'2026-2027-A',salon:'107'}));
+    await assertFails(set(ref(alumno107,'solicitudesSalon/alumno507'),solicitud107));
+  });
+  await test('lector aprobado solo lee su salón y nunca puede cobrar',async()=>{
+    await env.withSecurityRulesDisabled(ctx=>set(ref(ctx.database(),'roles/lectores/alumno107'),{
+      periodo:'2026-2027-A',salon:'107',aprobadoEn:1200,aprobadoPor:'adminGeneral'
+    }));
+    await assertSucceeds(get(ref(alumno107,'roles/lectores/alumno107')));
+    await assertSucceeds(get(ref(alumno107,'aulas/2026-2027-A/107')));
+    await assertFails(get(ref(alumno107,'aulas/2026-2027-A/507')));
+    await assertFails(get(ref(alumno107,'aulas/2026-2027-A/307')));
+    await assertFails(get(ref(alumno107,'aulas')));
+    await assertFails(get(ref(alumno107,'periodos')));
+    await assertSucceeds(get(ref(alumno107,'periodos/2026-2027-A/meta')));
+    await assertSucceeds(get(ref(alumno107,'periodos/2026-2027-A/salones/107')));
+    await assertFails(get(ref(alumno107,'periodos/2026-2027-A/salones/507')));
+    await assertFails(get(ref(alumno107,'profesoresAhorro')));
+    await assertFails(set(ref(alumno107,'aulas/2026-2027-A/107/pagosReinicio/x'),{monto:20}));
+  });
+  await test('lector 507 ve exclusivamente su salón; no permite alterar roles',async()=>{
+    await assertSucceeds(set(ref(alumno507,'solicitudesSalon/alumno507'),{...solicitud107,salon:'507'}));
+    await env.withSecurityRulesDisabled(ctx=>set(ref(ctx.database(),'roles/lectores/alumno507'),{
+      periodo:'2026-2027-A',salon:'507',aprobadoEn:1200,aprobadoPor:'adminGeneral'
+    }));
+    await assertSucceeds(get(ref(alumno507,'aulas/2026-2027-A/507')));
+    await assertFails(get(ref(alumno507,'aulas/2026-2027-A/107')));
+    await assertFails(get(ref(alumno507,'roles/lectores/alumno107')));
+    await assertFails(set(ref(alumno507,'roles/lectores/alumno507'),{periodo:'2026-2027-A',salon:'107'}));
+    await assertFails(get(ref(alumno107,'solicitudesSalon/alumno507')));
+  });
+  await test('revocar lector corta la lectura sin borrar pagos',async()=>{
+    await env.withSecurityRulesDisabled(ctx=>set(ref(ctx.database(),'roles/lectores/alumno107'),null));
+    await assertFails(get(ref(alumno107,'aulas/2026-2027-A/107')));
+    await assertSucceeds(get(ref(general,'aulas/2026-2027-A/107')));
+  });
 } finally {
   await env.cleanup();
 }

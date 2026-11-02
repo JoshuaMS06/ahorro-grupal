@@ -15,7 +15,9 @@ export default async function handler(req,res){
     const usuario=await usuarioVerificado(req);
     const db=adminDatabase();
     const permiso=await permisoAdministrador(db,usuario.uid,periodo,salon);
-    if(!permiso)return res.status(403).json({error:'Sin permiso para ese salón.'});
+    const lector=(await db.ref(`roles/lectores/${usuario.uid}`).get()).val();
+    const acceso=permiso||(lector?.periodo===periodo && lector?.salon===salon ? {tipo:'lector'} : null);
+    if(!acceso)return res.status(403).json({error:'Sin permiso para ese salón.'});
     const [todas,periodosSnap]=await Promise.all([
       db.ref('aulas').get(),db.ref('periodos').get(),
     ]);
@@ -30,7 +32,7 @@ export default async function handler(req,res){
       :resumirFondos(aulas,(await db.ref('ahorro/integrantes').get()).val()||{});
     const generacionId=generacionDeAula(periodo,salon,objetivo.meta);
     // Solo se entrega el saldo de la carrera; los registros históricos sin conciliar quedan fuera de la respuesta.
-    return res.status(200).json(informeVisibleSegunRol(resumen,permiso,generacionId));
+    return res.status(200).json(informeVisibleSegunRol(resumen,acceso,generacionId));
   }catch(error){
     console.error('No se pudo calcular el informe de carrera:',error?.code||error?.message||'error');
     return res.status(500).json({error:'No se pudo consultar el informe de fondos.'});
