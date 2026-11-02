@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, connectAuthEmulator, onAuthStateChanged, signInWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'firebase/auth';
+import { getAuth, connectAuthEmulator, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification, updateProfile, reload, signOut, sendPasswordResetEmail } from 'firebase/auth';
 import { getDatabase, connectDatabaseEmulator, ref, get, onValue, runTransaction, push, set } from 'firebase/database';
 import {
   BookOpen, Bell, BellRing, CalendarClock, Check, CheckCircle2,
@@ -19,6 +19,8 @@ import { informeVisibleSegunRol } from '../lib/informeRoles.js';
 import { periodoSiguiente, salonSiguiente } from '../lib/semestres.js';
 import { prepararExcel, revisarCoincidencias } from '../lib/importarExcel.js';
 import { aplicarVacaciones, esConfirmacionValida } from '../lib/vacaciones.js';
+import AccesoSalon from './AccesoSalon.jsx';
+import AccesosAdministracion from './AccesosAdministracion.jsx';
 import './index.css';
 import './App.css';
 
@@ -83,6 +85,10 @@ export default function App() {
   const [usuario,setUsuario]=useState(null);
   const [uidAdminGeneral,setUidAdminGeneral]=useState('');
   const [asignacion,setAsignacion]=useState(null);
+  const [asignacionLector,setAsignacionLector]=useState(null);
+  const [solicitudActual,setSolicitudActual]=useState(null);
+  const [correoVerificado,setCorreoVerificado]=useState(false);
+  const [errorAcceso,setErrorAcceso]=useState('');
   const [responsables,setResponsables]=useState({});
   const [perfilesResponsables,setPerfilesResponsables]=useState({});
   const [errorResponsables,setErrorResponsables]=useState('');
@@ -119,7 +125,9 @@ export default function App() {
   const esAdminGeneral=Boolean(usuario && uidAdminGeneral && uidAdminGeneral===usuario.uid);
   const esResponsable=Boolean(usuario && !esAdminGeneral && esResponsableDeSalon(asignacion,periodoId,salonId));
   const esAdmin=esAdminGeneral || esResponsable;
-  const vistaActiva=esAdminGeneral?vista:(vista==='panel'?'pagos':vista);
+  const esLector=Boolean(usuario && !esAdmin && asignacionLector?.periodo===periodoId && asignacionLector?.salon===salonId);
+  const tieneAcceso=esAdmin || esLector;
+  const vistaActiva=esAdminGeneral?vista:(esResponsable?(vista==='panel'?'pagos':vista):'pagos');
   const datos=dataSnapshot?.periodo===periodoId && dataSnapshot?.salon===salonId ? dataSnapshot.value : null;
   const reporteClave=`${periodoId}/${salonId}`;
   const reporteFondos=esAdmin && estadoReporteFondos?.clave===reporteClave && estadoReporteFondos?.uid===usuario?.uid ? estadoReporteFondos.informe : null;
@@ -130,7 +138,7 @@ export default function App() {
   // Antes de publicar se deben configurar roles/adminGeneralUid y probar las reglas en el emulador.
   useEffect(()=>{
     const unsub=onAuthStateChanged(auth,u=>{
-      setUsuario(u);setUidAdminGeneral('');setAsignacion(null);setLoginError('');
+      setUsuario(u);setUidAdminGeneral('');setAsignacion(null);setAsignacionLector(null);setSolicitudActual(null);setCorreoVerificado(!!u?.emailVerified);setErrorAcceso('');setLoginError('');
       setPeriodos({});setDbError('');setDataSnapshot(null);
       setResponsables({});setPerfilesResponsables({});setReporteFondos(null);setReporteError(null);
       setSemanaElegida(0);setSearch('');
@@ -157,17 +165,46 @@ export default function App() {
     return ()=>{stop1();stop2();};
   },[usuario]);
   useEffect(()=>{
-    if(!esAdmin)return;
-    const stop=onValue(ref(database,'periodos'),snap=>{
-      setPeriodos(snap.val()||{});setDbError('');
-    },err=>setDbError(avisoError(err)));
-    return ()=>stop();
-  },[esAdmin,periodoId]);
+    if(!usuario)return;
+    const stopRol=onValue(ref(database,`roles/lectores/${usuario.uid}`),snap=>{
+      const rol=snap.val()||null;
+      setAsignacionLector(rol);
+      if(rol?.periodo&&rol?.salon){
+        setPeriodoId(rol.periodo);setSalonId(rol.salon);
+        setDataSnapshot(null);setSemanaElegida(0);setCargando(true);
+        localStorage.setItem('ag:periodo',rol.periodo);
+        localStorage.setItem('ag:salon',rol.salon);
+        setLoginOpen(false);
+      }
+    },err=>setErrorAcceso(`No se pudo consultar tu autorización: ${avisoError(err)}`));
+    const stopSolicitud=onValue(ref(database,`solicitudesSalon/${usuario.uid}`),
+      snap=>setSolicitudActual(snap.val()||null),
+      err=>setErrorAcceso(`No se pudo consultar tu solicitud: ${avisoError(err)}`));
+    return ()=>{stopRol();stopSolicitud();};
+  },[usuario]);
   useEffect(()=>{
-    if(!esAdmin)return;
+    if(!tieneAcceso)return;
+    if(esAdminGeneral){
+      const stop=onValue(ref(database,'periodos'),snap=>{
+        setPeriodos(snap.val()||{});setDbError('');
+      },err=>setDbError(avisoError(err)));
+      return ()=>stop();
+    }
+    // Un lector o responsable no recibe el árbol de otros semestres y salones.
+    const stopMeta=onValue(ref(database,`periodos/${periodoId}/meta`),snap=>{
+      setPeriodos(actual=>({...actual,[periodoId]:{...(actual[periodoId]||{}),meta:snap.val()}}));
+    },err=>setDbError(avisoError(err)));
+    const stopSalon=onValue(ref(database,`periodos/${periodoId}/salones/${salonId}`),snap=>{
+      setPeriodos(actual=>({...actual,[periodoId]:{...(actual[periodoId]||{}),
+        salones:{[salonId]:snap.val()||{nombre:`Salón ${salonId}`}}}}));
+    },err=>setDbError(avisoError(err)));
+    return ()=>{stopMeta();stopSalon();};
+  },[tieneAcceso,esAdminGeneral,periodoId,salonId]);
+  useEffect(()=>{
+    if(!tieneAcceso)return;
     const stop=onValue(ref(database,`aulas/${periodoId}/${salonId}`),snap=>{setDataSnapshot({periodo:periodoId,salon:salonId,value:snap.val()});setCargando(false);setDbError('');},err=>{setCargando(false);setDbError(avisoError(err));});
     return ()=>stop();
-  },[esAdmin,periodoId,salonId]);
+  },[tieneAcceso,periodoId,salonId]);
   useEffect(()=>{
     if(!esAdminGeneral)return;
     const stop1=onValue(ref(database,'roles/responsables'),snap=>setResponsables(snap.val()||{}),err=>setDbError(avisoError(err)));
@@ -213,10 +250,10 @@ export default function App() {
     return ()=>clearTimeout(timer);
   },[toast]);
 
-  const periodKeys=Object.keys(periodos).filter(id=>esAdminGeneral || (asignacion?.periodo===id)).sort().reverse();
+  const periodKeys=Object.keys(periodos).filter(id=>esAdminGeneral || (asignacion?.periodo===id) || (asignacionLector?.periodo===id)).sort().reverse();
   const periodo=periodos[periodoId]||null;
   const destinoSiguiente=(()=>{try{return periodoSiguiente(periodoId);}catch{return '';}})();
-  const salones=Object.keys(periodo?.salones||{}).filter(id=>esAdminGeneral || (asignacion?.periodo===periodoId && asignacion?.salon===id)).sort((a,b)=>a.localeCompare(b,'es',{numeric:true}));
+  const salones=Object.keys(periodo?.salones||{}).filter(id=>esAdminGeneral || (asignacion?.periodo===periodoId && asignacion?.salon===id) || (asignacionLector?.periodo===periodoId && asignacionLector?.salon===id)).sort((a,b)=>a.localeCompare(b,'es',{numeric:true}));
   const vacacionesActivas=periodo?.meta?.vacaciones?.activas===true;
   const semanaActual=semanaPeriodo(periodo?.meta,fecha);
   const semanaMinima=primeraSemanaVisible(periodos,periodoId,periodo?.meta,datos?.meta);
@@ -241,7 +278,7 @@ export default function App() {
   const mensajesRetiro=useMemo(()=>Object.entries(retiros).map(([id,r])=>({id,...r})).sort((a,b)=>(b.creadoEn||0)-(a.creadoEn||0)),[retiros]);
   const avisosVisibles=useMemo(()=>mensajesRetiro.filter(r=>r.fondo==='carrera'||!r.fondo),[mensajesRetiro]);
   useEffect(()=>{
-    if(!esAdmin||!usuario)return;
+    if(!tieneAcceso||!usuario)return;
     let ignorar=false;
     const actualizar=async()=>{
       try{
@@ -258,7 +295,7 @@ export default function App() {
           }
           if(periodoId==='2026-2027-A'&&!ahorroNuevoActivo)throw Error('El nuevo ahorro no está activado; el saldo anterior no se muestra.');
           const resumenPrueba=ahorroNuevoActivo?resumirAhorroReiniciado(salonesPrueba,periodos):resumirFondos(salonesPrueba,{});
-          informe=informeVisibleSegunRol(resumenPrueba,{tipo:esAdminGeneral?'general':'responsable'},generacionId);
+          informe=informeVisibleSegunRol(resumenPrueba,{tipo:esAdminGeneral?'general':esResponsable?'responsable':'lector'},generacionId);
         }else{
           const token=await usuario.getIdToken();
           const url=`/api/resumen-carrera?periodo=${encodeURIComponent(periodoId)}&salon=${encodeURIComponent(salonId)}`;
@@ -271,7 +308,7 @@ export default function App() {
     };
     actualizar();
     return ()=>{ignorar=true;};
-  },[esAdmin,esAdminGeneral,usuario,periodoId,salonId,datos,reporteClave,periodos,generacionId,ahorroNuevoActivo]);
+  },[tieneAcceso,esAdminGeneral,esResponsable,usuario,periodoId,salonId,datos,reporteClave,periodos,generacionId,ahorroNuevoActivo]);
   const semanaInicio=inicioAportaciones(periodos,periodoId,datos?.meta);
   const vigenteParaRegistrar=semana<=semanaActual && (esAnterior || semana>=semanaInicio)
     && (periodoId!=='2026-2027-A'||ahorroNuevoActivo);
@@ -314,6 +351,42 @@ export default function App() {
     try {const result=await fn();if(typeof result==='string')setToast(result);}
     catch(e){setToast(`No se completó la operación: ${avisoError(e)}`);}
     finally{setOperacion('');}
+  };
+  const registrarLector=async({correo,clave,nombre})=>{
+    if(usuario)return;
+    setErrorAcceso('');
+    await withOperation('crear-cuenta',async()=>{
+      const cuenta=await createUserWithEmailAndPassword(auth,correo.trim().toLowerCase(),clave);
+      await updateProfile(cuenta.user,{displayName:nombre.trim()});
+      await sendEmailVerification(cuenta.user);
+      setCorreoVerificado(false);
+      return 'Cuenta creada. Revisa tu correo y verifica el enlace antes de solicitar un salón.';
+    });
+  };
+  const comprobarCorreo=async()=>{
+    if(!auth.currentUser)return;
+    await withOperation('verificar-correo',async()=>{
+      await reload(auth.currentUser);
+      await auth.currentUser.getIdToken(true);
+      setCorreoVerificado(auth.currentUser.emailVerified===true);
+      return auth.currentUser.emailVerified?'Correo verificado. Ya puedes solicitar tu salón.':'El correo aún no está verificado. Revisa tu bandeja y spam.';
+    });
+  };
+  const reenviarCorreo=async()=>{
+    if(!auth.currentUser)return;
+    await withOperation('reenviar-correo',async()=>{
+      await sendEmailVerification(auth.currentUser);
+      return 'Se envió otro enlace de verificación al correo de tu cuenta.';
+    });
+  };
+  const solicitarAcceso=async({periodo,salon})=>{
+    if(!usuario||!correoVerificado||solicitudActual)return;
+    await withOperation('solicitar-salon',async()=>{
+      await set(ref(database,`solicitudesSalon/${usuario.uid}`),{
+        periodo,salon,estado:'pendiente',creadoEn:Date.now()
+      });
+      return `Solicitud para salón ${salon} enviada. El administrador general debe autorizarla.`;
+    });
   };
   const signIn=async e=>{
     e.preventDefault();setLoginBusy(true);setLoginError('');
@@ -653,20 +726,24 @@ export default function App() {
       <header className="ag-header">
         <div className="ag-brand"><img src="/icons/cerdito-192.png" alt="Cerdito de Ahorro Grupal"/><div><strong>Ahorro<span>Grupal</span></strong><small>Ingeniería Industrial</small></div></div>
         <div className="ag-header-actions">
-          {esAdmin ? <span className="ag-admin-pill"><ShieldCheck size={16}/> {esAdminGeneral?'Admin. general':`Responsable ${salonId}`}</span> : <button className="ag-icon" type="button" title="Acceso administrativo" onClick={()=>setLoginOpen(true)}><LockKeyhole size={21}/></button>}
+          {tieneAcceso ? <span className="ag-admin-pill"><ShieldCheck size={16}/> {esAdminGeneral?'Admin. general':esResponsable?`Responsable ${salonId}`:`Salón ${salonId}`}</span> : <button className="ag-icon" type="button" title="Acceso administrativo" onClick={()=>setLoginOpen(true)}><LockKeyhole size={21}/></button>}
           {usuario&&<button className="ag-icon" type="button" title="Cerrar sesión" onClick={()=>signOut(auth)}><LogOut size={19}/></button>}
           <button className="ag-icon" type="button" title="Menú" onClick={()=>setMostrarMenu(!mostrarMenu)}><Menu size={22}/></button>
         </div>
       </header>
-      {mostrarMenu&&<nav className="ag-menu">{esAdminGeneral&&<button onClick={()=>{setVista('panel');setMostrarMenu(false);}}>Panel general</button>}<button onClick={()=>{setVista('pagos');setMostrarMenu(false);}}>Aportaciones</button><button onClick={()=>{setVista('pagos');setMostrarMenu(false);}}>Aportaciones y retiros</button><button onClick={()=>{setVista('profesores');setMostrarMenu(false);}}>Profesores</button><button onClick={()=>{setVista('gestion');setMostrarMenu(false);}}>Ciclos y grupos</button>{esAdminGeneral&&<button onClick={()=>{setVista('roles');setMostrarMenu(false);}}>Responsables de salón</button>}<button onClick={instalar}>Instalar app</button></nav>}
-      {!esAdmin ? <main className="ag-main">
-        <section className="ag-panel">
-          <div className="ag-panel-heading"><h2><LockKeyhole size={19}/> Acceso protegido</h2></div>
-          <p className="ag-muted">La consulta de estudiantes y pagos requiere iniciar sesión. Cada responsable tiene acceso exclusivamente a su salón y ciclo escolar; el administrador general supervisa todos.</p>
-          <SmallButton variant="primary" onClick={()=>setLoginOpen(true)}><LockKeyhole size={17}/> {usuario ? 'Comprobar o cambiar cuenta' : 'Iniciar sesión'}</SmallButton>
-          {usuario && <p className="ag-muted">Si tu cuenta no obtiene acceso, solicita al administrador general que te asigne una de las dos plazas del salón. Si eres el administrador general, verifica roles/adminGeneralUid.</p>}
-        </section>
-      </main> : <main className="ag-main">
+      {mostrarMenu&&<nav className="ag-menu">
+          {esAdminGeneral&&<button onClick={()=>{setVista('panel');setMostrarMenu(false);}}>Panel general</button>}
+          {tieneAcceso&&<button onClick={()=>{setVista('pagos');setMostrarMenu(false);}}>Aportaciones</button>}
+          {esAdmin&&<button onClick={()=>{setVista('profesores');setMostrarMenu(false);}}>Profesores</button>}
+          {esAdmin&&<button onClick={()=>{setVista('gestion');setMostrarMenu(false);}}>Ciclos y grupos</button>}
+          {esAdminGeneral&&<button onClick={()=>{setVista('roles');setMostrarMenu(false);}}>Responsables de salón</button>}
+          {esAdminGeneral&&<button onClick={()=>{setVista('lectores');setMostrarMenu(false);}}>Accesos de estudiantes</button>}
+          <button onClick={()=>{instalar();setMostrarMenu(false);}}>Instalar app</button>
+        </nav>}
+      {!tieneAcceso ? <AccesoSalon usuario={usuario} solicitud={solicitudActual} correoVerificado={correoVerificado}
+        abrirLogin={()=>setLoginOpen(true)} registrar={registrarLector} solicitar={solicitarAcceso}
+        verificarCorreo={comprobarCorreo} reenviarCorreo={reenviarCorreo} ocupado={!!operacion}
+        error={errorAcceso} modoDemo={usarEmuladores}/> : <main className="ag-main">
         {dbError&&<div className="ag-error"><AlertTriangle size={18}/> {dbError}</div>}
         <div className="ag-intro"><div><span className="ag-kicker">{esAdminGeneral?'ADMINISTRACIÓN GENERAL · INGENIERÍA INDUSTRIAL':`SALÓN · ${salonId} · ${periodo?.meta?.nombre||periodoId}`} {periodo?.meta?.cerradoEn?' · CICLO ARCHIVADO':''}</span><h1>{esAdminGeneral?'Panel de administración':'Control de aportaciones'}</h1><p>{esAdminGeneral?'Gestión del fondo de la carrera':`Registro de tu salón · ${pesos(cuotaSemanal)} por semana.`}</p></div><div className="ag-week-pill"><CalendarClock size={19}/> Semana {semanaActual}</div></div>
         {vacacionesActivas&&<div className="ag-note"><PauseCircle size={17}/> Vacaciones activas: semana {semanaActual} congelada. No se registran aportaciones ni nuevas semanas pendientes.</div>}
@@ -674,7 +751,7 @@ export default function App() {
           <label>Ciclo escolar<select disabled={!esAdminGeneral} value={periodoId} onChange={e=>cambiarPeriodo(e.target.value)}>{periodKeys.length ? periodKeys.map(k=><option key={k} value={k}>{periodos[k]?.meta?.nombre||k}</option>):<option value={defaultPeriod}>Sin listas importadas</option>}</select></label>
           <label>Salón<select disabled={!esAdminGeneral} value={salonId} onChange={e=>cambiarSalon(e.target.value)}>{salones.length ? salones.map(k=><option key={k} value={k}>{periodo?.salones?.[k]?.nombre||`Salón ${k}`}</option>):<option value="507">Sin salones</option>}</select></label>
         </div>
-        <div className="ag-tabs" role="tablist" aria-label="Apartados">{esAdminGeneral&&<button className={vistaActiva==='panel'?'active':''} onClick={()=>setVista('panel')}><LayoutDashboard size={17}/> Inicio</button>}<button className={vistaActiva==='pagos'?'active':''} onClick={()=>setVista('pagos')}><Wallet size={17}/> Aportaciones</button><button className={vistaActiva==='profesores'?'active':''} onClick={()=>setVista('profesores')}><GraduationCap size={17}/> Profesores</button><button className={vistaActiva==='gestion'?'active':''} onClick={()=>setVista('gestion')}><BookOpen size={17}/> Ciclos y salones</button>{esAdminGeneral&&<button className={vistaActiva==='roles'?'active':''} onClick={()=>setVista('roles')}><ShieldCheck size={17}/> Responsables</button>}</div>
+        <div className="ag-tabs" role="tablist" aria-label="Apartados">{esAdminGeneral&&<button className={vistaActiva==='panel'?'active':''} onClick={()=>setVista('panel')}><LayoutDashboard size={17}/> Inicio</button>}<button className={vistaActiva==='pagos'?'active':''} onClick={()=>setVista('pagos')}><Wallet size={17}/> Aportaciones</button><button className={vistaActiva==='profesores'?'active':''} onClick={()=>setVista('profesores')}><GraduationCap size={17}/> Profesores</button><button className={vistaActiva==='gestion'?'active':''} onClick={()=>setVista('gestion')}><BookOpen size={17}/> Ciclos y salones</button>{esAdminGeneral&&<button className={vistaActiva==='roles'?'active':''} onClick={()=>setVista('roles')}><ShieldCheck size={17}/> Responsables</button>}{esAdminGeneral&&<button className={vistaActiva==='lectores'?'active':''} onClick={()=>setVista('lectores')}><LockKeyhole size={17}/> Accesos</button>}</div>
         {vistaActiva==='panel'&&esAdminGeneral&&<>
           <section className="ag-general-hero" aria-label="Resumen general del ahorro de carrera">
             <div className="ag-general-label"><CircleDollarSign size={22}/> FONDO DE INGENIERÍA INDUSTRIAL</div>
@@ -706,7 +783,14 @@ export default function App() {
             </div>
             <div className="ag-stats"><div><CircleDollarSign size={21}/><strong>{pesos(cuotaSemanal)}</strong><span>Por semana</span></div><div><UsersRound size={21}/><strong>{cargando?'—':lista.length}</strong><span>Integrantes</span></div><div><CheckCircle2 size={21}/><strong>{vigenteParaRegistrar?pagaron:'—'}</strong><span>Pagaron esta semana</span></div></div>
           </section>
-          {generacionId==='gen-2026-2027-A-507'&&<div className="ag-note"><Wallet size={17}/> De los {pesos(cuotaSemanal)} del salón 507, <strong>$10 corresponden a carrera y $10 al ahorro independiente del grupo.</strong> Ahorro nuevo acumulado del grupo: <strong>{reporteFondos?pesos(reporteFondos.ahorroPropioSalon):'—'}</strong>. Los pagos ya registrados conservan su desglose original.</div>}
+{generacionId==='gen-2026-2027-A-507'&&<Panel title="Ahorro del salón 507" icon={LockKeyhole}>
+            <p className="ag-muted">Cada aportación de $20 se divide en $10 para el ahorro privado del 507 y $10 para el fondo común de la carrera.</p>
+            <div className="ag-stats">
+              <div><LockKeyhole size={21}/><strong>{reporteFondos?pesos(reporteFondos.ahorroPropioSalon):'—'}</strong><span>Ahorro privado del salón 507</span></div>
+              <div><CircleDollarSign size={21}/><strong>{reporteFondos?pesos(reporteFondos.aportacionCarrera):'—'}</strong><span>Aportación del 507 al fondo de la carrera</span></div>
+            </div>
+            <p className="ag-muted">Los pagos históricos conservan su desglose original.</p>
+          </Panel>}
           {esCorteEnSalon&&<div className="ag-note"><History size={17}/> El fondo nuevo comienza en la semana 5. Las semanas 1 a 4 pueden capturarse como «Pagos anteriores», sin generar adeudos automáticos ni sumar al saldo actual.</div>}
           {periodoId==='2026-2027-A'&&!ahorroNuevoActivo&&<div className="ag-error"><AlertTriangle size={17}/> El reinicio contable de la semana 5 aún no está activado. No registres movimientos hasta completar la migración segura.{esAdminGeneral&&<div style={{marginTop:12}}><SmallButton disabled={!!operacion} onClick={activarReinicioSeguro}><ShieldCheck size={16}/> Revisar y activar ahorro nuevo</SmallButton></div>}</div>}
           <Panel title="Ahorro de la carrera" icon={Wallet}>
@@ -718,7 +802,7 @@ export default function App() {
                 <div><UsersRound size={21}/><strong>{pesos(reporteFondos.aportacionCarrera)}</strong><span>Aportación acumulada de este salón a la carrera</span></div>
                 <div><CircleDollarSign size={21}/><strong>{pesos(reporteFondos.totalCarrera)}</strong><span>Fondo total de la carrera</span></div>
               </div>
-              <p className="ag-muted">El ahorro se registra únicamente en el fondo de la carrera.</p>
+              <p className="ag-muted">{generacionId==='gen-2026-2027-A-507'?'Solo la aportación de $10 por pago se incorpora al fondo común de la carrera. El ahorro privado del 507 permanece separado.':'Las aportaciones de este salón se incorporan al fondo de la carrera.'}</p>
             </>}
           </Panel>
 
@@ -738,6 +822,7 @@ export default function App() {
           {datos?.meta&&<Panel title="Historial de aportaciones" icon={History}><p className="ag-muted">Movimientos del nuevo ahorro. Los registros anteriores permanecen respaldados y no se suman.</p><div className="ag-timeline">{pagosHist.slice(0,100).map(p=><div className="ag-timeline-row" key={p.id}><span className={`ag-timeline-mark ${p.estado==='pagado'?'ok':'cancel'}`}>{p.estado==='pagado'?<Check size={16}/>:<X size={16}/>}</span><div><strong title={p.nombre||integrantes[p.estudianteId]?.nombre||''}>{nombreParaMostrar(integrantes[p.estudianteId]?.nombre||p.nombre||'Integrante',p.estudianteId,integrantes[p.estudianteId]?.formatoNombre)}</strong><small>Semana {p.semana} · {fechaLarga(p.creadoEn)} {p.estado==='anulado'?'· Anulación':''}{p.motivo?` · ${p.motivo}`:''}</small></div><b>{p.estado==='pagado'?'+':'−'}{pesos(p.monto)}</b></div>)}{!pagosHist.length&&<p className="ag-muted">Todavía no hay pagos semanales detallados para este salón.</p>}</div></Panel>}
         {esAdmin&&!periodo?.meta?.cerradoEn&&datos?.meta&&(periodoId!=='2026-2027-A'||ahorroNuevoActivo)&&<Panel title="Solicitar retiro de la caja" icon={ArrowDownRight}><form className="ag-simple-form" onSubmit={solicitarRetiro}><label>Importe en pesos<input type="number" min="1" step="1" value={retiro.monto} onChange={e=>setRetiro({...retiro,monto:e.target.value})} placeholder="Ej. 200" required/></label><label>Motivo<input value={retiro.motivo} onChange={e=>setRetiro({...retiro,motivo:e.target.value})} placeholder="¿Para qué se solicita?" minLength={6} required/></label><SmallButton type="submit" variant="primary" disabled={!!operacion}><Plus size={17}/> Publicar solicitud</SmallButton></form><p className="ag-muted">Solicitar no descuenta dinero. El saldo se actualiza cuando se aprueba la solicitud.</p></Panel>}
         <Panel title="Avisos de movimientos y retiros" icon={BellRing} action={<SmallButton onClick={permitirAvisos}><Bell size={16}/> Permitir avisos</SmallButton>}><p className="ag-muted">Solicitudes y retiros correspondientes a la carrera. Los avisos del dispositivo funcionan mientras la aplicación está abierta.</p>{!datos?.meta?<div className="ag-empty-small">Selecciona un salón configurado.</div>:<div className="ag-timeline">{avisosVisibles.map(r=><div key={r.id} className="ag-withdrawal"><div className="ag-withdrawal-head"><span className={`ag-status ag-status-${r.estado}`}>{r.estado==='solicitado'?'Solicitud de retiro':r.estado==='aprobado'?'Retiro aprobado':'Solicitud rechazada'}</span><strong>{pesos(r.monto)}</strong></div><p>{r.motivo}</p><small>{fechaLarga(r.creadoEn)} {r.respondidoEn?`· Resuelto ${fechaLarga(r.respondidoEn)}`:''}</small>{esAdminGeneral&&r.fondo==='carrera'&&!periodo?.meta?.cerradoEn&&r.estado==='solicitado'&&<div className="ag-withdrawal-buttons"><SmallButton disabled={!!operacion} onClick={()=>resolverRetiro(r,'aprobado')} variant="primary"><Check size={16}/> Aprobar y descontar</SmallButton><SmallButton disabled={!!operacion} onClick={()=>resolverRetiro(r,'rechazado')}>Rechazar</SmallButton></div>}</div>)}{!avisosVisibles.length&&<p className="ag-muted">No existen avisos de retiro para este salón.</p>}</div>}</Panel></>}
+        {vistaActiva==='lectores'&&esAdminGeneral&&<Panel title="Accesos de estudiantes" icon={ShieldCheck}><AccesosAdministracion usuario={usuario}/></Panel>}
         {vistaActiva==='roles' && esAdminGeneral && <Panel title="Responsables de los salones" icon={ShieldCheck}>
           <p className="ag-muted">Crea responsables con su nombre y correo. Firebase les envía un mensaje para que establezcan su contraseña. No necesitas copiar identificadores ni entrar a Firebase. Los accesos avanzan automáticamente con su generación al cambiar de semestre.</p>
           <p className="ag-note">Máximo dos responsables por salón. Solo pueden registrar aportaciones y solicitar retiros de su salón. Las bajas de permisos no borran pagos ni alumnos.</p>
@@ -802,7 +887,7 @@ export default function App() {
       </main>}
     </div>
     {toast&&<div role="status" className="ag-toast">{toast}<button onClick={()=>setToast('')} aria-label="Cerrar"><X size={15}/></button></div>}
-    {loginOpen&&<div className="ag-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setLoginOpen(false);}}><div className="ag-modal" role="dialog" aria-modal="true" aria-label="Administración"><button className="ag-modal-close" onClick={()=>setLoginOpen(false)}><X size={20}/></button><div className="ag-modal-mark"><LockKeyhole size={26}/></div><h2>Acceso administrativo</h2>{usuario&&!esAdmin?<p>Sesión iniciada, pero este UID no tiene un rol activo en <code>roles</code>. Consulta al administrador general.</p>:<p>Solo las cuentas autorizadas pueden registrar movimientos.</p>}<form onSubmit={signIn}><label>Correo electrónico<input type="email" autoComplete="username" required value={email} onChange={e=>setEmail(e.target.value)}/></label><label>Contraseña<div className="ag-password"><input type={seePassword?'text':'password'} autoComplete="current-password" required value={password} onChange={e=>setPassword(e.target.value)}/><button type="button" onClick={()=>setSeePassword(!seePassword)}>{seePassword?<EyeOff size={18}/>:<Eye size={18}/>}</button></div></label>{loginError&&<div className="ag-error">{loginError}</div>}<SmallButton type="submit" variant="primary" disabled={loginBusy}><ShieldCheck size={18}/> {loginBusy?'Verificando…':'Iniciar sesión'}</SmallButton></form><button className="ag-link" type="button" onClick={resetPassword}>¿Olvidaste tu contraseña?</button>{usuario&&!esAdmin&&<button className="ag-link" type="button" onClick={()=>signOut(auth)}>Cerrar sesión actual</button>}</div></div>}
+    {loginOpen&&<div className="ag-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setLoginOpen(false);}}><div className="ag-modal" role="dialog" aria-modal="true" aria-label="Iniciar sesión"><button className="ag-modal-close" onClick={()=>setLoginOpen(false)}><X size={20}/></button><div className="ag-modal-mark"><LockKeyhole size={26}/></div><h2>Iniciar sesión</h2><p>Inicia sesión con el correo y la contraseña de tu cuenta. Los estudiantes necesitan autorización para consultar su salón.</p><form onSubmit={signIn}><label>Correo electrónico<input type="email" autoComplete="username" required value={email} onChange={e=>setEmail(e.target.value)}/></label><label>Contraseña<div className="ag-password"><input type={seePassword?'text':'password'} autoComplete="current-password" required value={password} onChange={e=>setPassword(e.target.value)}/><button type="button" onClick={()=>setSeePassword(!seePassword)}>{seePassword?<EyeOff size={18}/>:<Eye size={18}/>}</button></div></label>{loginError&&<div className="ag-error">{loginError}</div>}<SmallButton type="submit" variant="primary" disabled={loginBusy}><ShieldCheck size={18}/> {loginBusy?'Verificando…':'Iniciar sesión'}</SmallButton></form><button className="ag-link" type="button" onClick={resetPassword}>¿Olvidaste tu contraseña?</button>{usuario&&!tieneAcceso&&<button className="ag-link" type="button" onClick={()=>signOut(auth)}>Cerrar sesión actual</button>}</div></div>}
     {modalInstalar&&<div className="ag-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setModalInstalar(false);}}><div className="ag-modal" role="dialog" aria-modal="true" aria-label="Instalar aplicación"><button className="ag-modal-close" onClick={()=>setModalInstalar(false)}><X size={20}/></button><img src="/icons/cerdito-192.png" alt="Cerdito" width="80" height="80"/><h2>Instalar AhorroGrupal</h2><p>Android: menú de Chrome → Instalar app. iPhone: Safari → Compartir → Añadir a inicio. Computadora: opción Instalar en Chrome o Edge.</p></div></div>}
   </div>;
 }
