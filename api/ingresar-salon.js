@@ -41,10 +41,20 @@ export default async function handler(req,res){
     // Identidad técnica temporal y aleatoria de Firebase Auth: el estudiante
     // no proporciona correo, contraseña ni crea cuenta de manera manual.
     const uid=`visitante_${randomBytes(18).toString('hex')}`;
-    const token=await adminAuth().createCustomToken(uid,{
-      rolSalon:'consulta',periodoCodigo:periodo,salonCodigo:salon,versionCodigo:version
-    });
-    return res.status(200).json({token,periodo,salon});
+    const auth=adminAuth();
+    const claims={rolSalon:'consulta',periodoCodigo:periodo,salonCodigo:salon,versionCodigo:version};
+    // Se crea un identificador técnico sin pedir datos personales. Las claims
+    // persistentes sobreviven a la renovación automática del token de Firebase.
+    await auth.createUser({uid});
+    try{
+      await auth.setCustomUserClaims(uid,claims);
+      const token=await auth.createCustomToken(uid,claims);
+      return res.status(200).json({token,periodo,salon});
+    }catch(error){
+      // No dejar una identidad sin permisos a medias si falla la creación.
+      await auth.deleteUser(uid).catch(()=>{});
+      throw error;
+    }
   }catch(error){
     console.error('Ingreso por código:',error?.code||error?.message||'error');
     return res.status(500).json({error:'No se pudo verificar el código. Intenta nuevamente.'});
