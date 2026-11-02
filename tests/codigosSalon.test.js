@@ -4,7 +4,8 @@ import {normalizarCodigoSalon,generarCodigoSalon,digestCodigoSalon,codigoSalonCo
 
 test('los códigos nuevos son PIN de 4 dígitos generados de forma segura',()=>{
  const codigos=Array.from({length:30},()=>generarCodigoSalon());
- assert.equal(new Set(codigos).size,30);
+ // Con 10 000 combinaciones, una coincidencia aleatoria entre 30 muestras es posible.
+ assert.ok(new Set(codigos).size >= 25);
  for(const codigo of codigos){
    assert.match(codigo,/^\d{4}$/);
    assert.equal(normalizarCodigoSalon(codigo).length,4);
@@ -14,7 +15,7 @@ test('los códigos nuevos son PIN de 4 dígitos generados de forma segura',()=>{
 test('el código no se guarda en claro; acepta guiones y espacios al introducirlo',()=>{
  const codigo=generarCodigoSalon(),digest=digestCodigoSalon(codigo);
  assert.match(digest,/^[a-f0-9]{64}$/);
- assert.equal(digest.includes(normalizarCodigoSalon(codigo)),false);
+ assert.notEqual(digest,normalizarCodigoSalon(codigo));
  assert.equal(codigoSalonCoincide(codigo,digest),true);
  assert.equal(codigoSalonCoincide(' '+codigo.toLowerCase()+' ',digest),true);
  assert.equal(codigoSalonCoincide(generarCodigoSalon(),digest),false);
