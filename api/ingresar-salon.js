@@ -3,8 +3,9 @@ import {adminAuth,adminDatabase} from '../lib/adminServidor.js';
 import {codigoSalonCoincide,esCodigoSalonValido} from '../lib/codigosSalon.js';
 import {isClassCode,isPeriodId} from '../lib/aulas.js';
 
+// Los PIN de 4 cifras son fáciles de probar al azar: limitar intentos fallidos.
 const VENTANA=15*60*1000;
-const MAX_INTENTOS=8;
+const MAX_INTENTOS=5;
 
 export default async function handler(req,res){
   res.setHeader('Cache-Control','no-store');
