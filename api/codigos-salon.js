@@ -2,6 +2,7 @@ import {adminDatabase,usuarioVerificado} from '../lib/adminServidor.js';
 import {generarCodigoSalon,digestCodigoSalon} from '../lib/codigosSalon.js';
 import {cifrarPin,descifrarPin,recuperarPin4,clavePinServidor} from '../lib/pinProtegido.js';
 import {isClassCode,isPeriodId} from '../lib/aulas.js';
+import {proponerCambioPin} from '../lib/transaccionCodigo.js';
 
 // Solo el administrador general puede consultar, crear y cambiar PIN.
 // No se devuelven contraseñas en el listado: el PIN se pide individualmente.
@@ -73,17 +74,10 @@ export default async function handler(req,res){
     if(!codigo)return res.status(503).json({error:'No fue posible generar un PIN distinto. Inténtalo nuevamente.'});
     const ahora=Date.now(),version=(Number.isSafeInteger(anterior?.version)?anterior.version:0)+1;
     const pinCifrado=cifrarPin(codigo,periodo,salon,clavePinServidor());
-    const esperado=anterior?.digest||null;
-    const resultado=await configRef.transaction(actual=>{
-      // Firebase Admin puede invocar primero la transacción con null mientras
-      // obtiene el estado remoto. Nunca abortar por ese null especulativo.
-      // Cuando llega el valor real, comparar el digest anterior para evitar
-      // sobrescribir un cambio concurrente.
-      if(actual?.digest && (actual.digest!==esperado || actual.version!==anterior?.version))return;
-      if(actual?.digest && accion==='crear')return;
-      if(!actual && accion==='rotar'&&!esperado)return;
-      return {digest,pinCifrado,version,actualizadoEn:ahora,actualizadoPor:usuario.uid};
-    },undefined,false);
+    const propuesta={digest,pinCifrado,version,actualizadoEn:ahora,actualizadoPor:usuario.uid};
+    const resultado=await configRef.transaction(
+      actual=>proponerCambioPin(actual,anterior,accion,propuesta),undefined,false
+    );
     if(!resultado.committed)
       return res.status(409).json({error:'El código cambió en otra sesión. Pulsa Actualizar salones.'});
     return res.status(200).json({ok:true,periodo,salon,codigo,version});
