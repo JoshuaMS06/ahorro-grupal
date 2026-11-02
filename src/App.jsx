@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { cuotaDeSalon, esLunes, estadoSemana, fechaMexico, isClassCode, isPeriodId, pagoClave, semanaPeriodo } from '../lib/aulas.js';
 import {corteActivo, esPeriodoReinicio, rutaPagos, rutaRetiros, inicioAportaciones, resumirAhorroReiniciado} from '../lib/reinicioContable.js';
+import {esSemanaAnterior, rutaPagoSeleccionado, primeraSemanaVisible, esPagoLegado, resumenPagosAnteriores} from '../lib/pagosAnteriores.js';
 import { nombreParaMostrar, normalizarBusquedaNombre } from '../lib/nombres.js';
 import { esResponsableDeSalon } from '../lib/roles.js';
 import { distribucionNueva, generacionDeAula, resumirFondos } from '../lib/fondos.js';
@@ -213,7 +214,8 @@ export default function App() {
   const salones=Object.keys(periodo?.salones||{}).filter(id=>esAdminGeneral || (asignacion?.periodo===periodoId && asignacion?.salon===id)).sort((a,b)=>a.localeCompare(b,'es',{numeric:true}));
   const vacacionesActivas=periodo?.meta?.vacaciones?.activas===true;
   const semanaActual=semanaPeriodo(periodo?.meta,fecha);
-  const semana=semanaElegida||semanaActual;
+  const semanaMinima=primeraSemanaVisible(periodos,periodoId,periodo?.meta,datos?.meta);
+  const semana=Math.max(semanaMinima,Math.min(semanaElegida||semanaActual,semanaActual));
   const cuotaSemanal=cuotaDeSalon(salonId,datos?.meta);
   const generacionId=generacionDeAula(periodoId,salonId,datos?.meta);
   const integrantes=useMemo(()=>datos?.integrantes||{},[datos]);
@@ -223,6 +225,12 @@ export default function App() {
   const nodoPagos=rutaPagos(periodos,periodoId);
   const nodoRetiros=rutaRetiros(periodos,periodoId);
   const pagos=datos?.[nodoPagos]||{};
+  const esAnterior=esSemanaAnterior(periodos,periodoId,semana);
+  const nodoPagoSemana=rutaPagoSeleccionado(periodos,periodoId,semana);
+  const pagosSemana=datos?.[nodoPagoSemana]||{};
+  const pagosLegado=datos?.pagos||{};
+  const pagosAnteriores=datos?.pagosAnteriores||{};
+  const resumenAnterior=resumenPagosAnteriores(pagosAnteriores);
   const retiros=useMemo(()=>datos?.[nodoRetiros]||{},[datos,nodoRetiros]);
   const mensajesRetiro=useMemo(()=>Object.entries(retiros).map(([id,r])=>({id,...r})).sort((a,b)=>(b.creadoEn||0)-(a.creadoEn||0)),[retiros]);
   const avisosVisibles=useMemo(()=>mensajesRetiro.filter(r=>r.fondo==='carrera'||!r.fondo),[mensajesRetiro]);
@@ -258,13 +266,15 @@ export default function App() {
     actualizar();
     return ()=>{ignorar=true;};
   },[esAdmin,esAdminGeneral,usuario,periodoId,salonId,datos,reporteClave,periodos,generacionId,ahorroNuevoActivo]);
-  const detalleSemana=lista.map(e=>({...e,estado:estadoSemana(pagos,e.id,semana)}));
-  const semanaInicio= inicioAportaciones(periodos,periodoId,datos?.meta);
-  const vigenteParaRegistrar=semana>=semanaInicio && (periodoId!=='2026-2027-A'||ahorroNuevoActivo);
+  const semanaInicio=inicioAportaciones(periodos,periodoId,datos?.meta);
+  const vigenteParaRegistrar=semana<=semanaActual && (esAnterior || semana>=semanaInicio)
+    && (periodoId!=='2026-2027-A'||ahorroNuevoActivo);
   const estadoAlumno=e=>{
     if(!vigenteParaRegistrar)return 'sin-dato';
-    return estadoSemana(pagos,e.id,semana);
+    if(esAnterior && esPagoLegado(pagosLegado,e.id,semana))return 'pagado';
+    return estadoSemana(pagosSemana,e.id,semana);
   };
+  const detalleSemana=lista.map(e=>({...e,estado:estadoAlumno(e)}));
   const pagaron=detalleSemana.filter(e=>estadoAlumno(e)==='pagado').length;
   const pendientes=detalleSemana.filter(e=>estadoAlumno(e)==='pendiente').length;
   const consulta=normalizarBusquedaNombre(search.trim());
@@ -273,6 +283,11 @@ export default function App() {
     if(!p?.estudianteId)return [];
     const eventos=Object.entries(p.historial||{});
     return eventos.length ? eventos.map(([key,ev])=>({id:`${id}-${key}`,nombre:p.nombre,estudianteId:p.estudianteId,semana:p.semana,monto:p.monto,estado:ev.tipo==='registro'?'pagado':'anulado',creadoEn:ev.fecha,registradoPor:ev.uid,motivo:ev.motivo||''})) : [{id,...p}];
+  }).sort((a,b)=>(b.creadoEn||0)-(a.creadoEn||0));
+  const pagosHistAnteriores=Object.entries(pagosAnteriores).flatMap(([id,p])=>{
+    if(!p?.estudianteId)return [];
+    const eventos=Object.entries(p.historial||{});
+    return eventos.length ? eventos.map(([key,ev])=>({id:`${id}-${key}`,nombre:p.nombre,estudianteId:p.estudianteId,semana:p.semana,monto:p.monto,estado:ev.tipo==='registro'?'pagado':'anulado',creadoEn:ev.fecha,motivo:ev.motivo||''})) : [{id,...p}];
   }).sort((a,b)=>(b.creadoEn||0)-(a.creadoEn||0));
 
   useEffect(()=>{
@@ -408,28 +423,28 @@ export default function App() {
   const registrarPago=async e=>{
     if(!esAdmin||!vigenteParaRegistrar||vacacionesActivas||periodo?.meta?.cerradoEn)return;
     const key=pagoClave(e.id,semana);
-    if(pagos[key]?.estado==='pagado')return;
+    if(pagosSemana[key]?.estado==='pagado' || (esAnterior && esPagoLegado(pagosLegado,e.id,semana)))return;
     await withOperation(`pago:${e.id}`,async()=>{
-      const eventoId=push(ref(database,`aulas/${periodoId}/${salonId}/${nodoPagos}`)).key;
-      const r=await runTransaction(ref(database,`aulas/${periodoId}/${salonId}/${nodoPagos}/${key}`),v=>{
+      const eventoId=push(ref(database,`aulas/${periodoId}/${salonId}/${nodoPagoSemana}`)).key;
+      const r=await runTransaction(ref(database,`aulas/${periodoId}/${salonId}/${nodoPagoSemana}/${key}`),v=>{
         if(v?.estado==='pagado')return;
         const cuando=Date.now();
         const d=distribucionNueva(periodoId,salonId,datos.meta);
         if(cuotaSemanal!==d.cuota)throw Error('La cuota del salón y el tipo de ahorro no coinciden.');
-        return {...(v||{}),estudianteId:e.id,nombre:e.nombre,semana,monto:cuotaSemanal,fondoGrupo:d.grupo,fondoCarrera:d.carrera,estado:'pagado',creadoEn:cuando,registradoPor:usuario.uid,correcciones:v?.correcciones||0,historial:{...(v?.historial||{}),[eventoId]:{tipo:'registro',fecha:cuando,uid:usuario.uid}}};
+        return {...(v||{}),estudianteId:e.id,nombre:e.nombre,semana,monto:cuotaSemanal,fondoGrupo:esAnterior?0:d.grupo,fondoCarrera:esAnterior?0:d.carrera,...(esAnterior?{tipoRegistro:'anterior'}:{}),estado:'pagado',creadoEn:cuando,registradoPor:usuario.uid,correcciones:v?.correcciones||0,historial:{...(v?.historial||{}),[eventoId]:{tipo:'registro',fecha:cuando,uid:usuario.uid}}};
       },{applyLocally:false});
-      return r.committed?`Pago de ${pesos(cuotaSemanal)} registrado para ${e.nombreVisible}, semana ${semana}.`:'Esta semana ya estaba pagada.';
+      return r.committed?`Pago de ${pesos(cuotaSemanal)} registrado para ${e.nombreVisible}, semana ${semana}${esAnterior?' en PAGOS ANTERIORES (fuera del fondo actual)':''}.`:'Esta semana ya estaba pagada.';
     });
   };
   const anularPago=async e=>{
-    if(!esAdminGeneral||vacacionesActivas||periodo?.meta?.cerradoEn)return;
+    if(!esAdminGeneral||!vigenteParaRegistrar||vacacionesActivas||periodo?.meta?.cerradoEn)return;
     const motivo=window.prompt(`Motivo de anular el pago de ${e.nombreVisible} (semana ${semana}):`);
     if(motivo===null)return;
     if(motivo.trim().length<5){setToast('Escribe un motivo de al menos 5 caracteres para la corrección.');return;}
     const key=pagoClave(e.id,semana);
     await withOperation(`anular:${e.id}`,async()=>{
-      const eventoId=push(ref(database,`aulas/${periodoId}/${salonId}/${nodoPagos}`)).key;
-      const r=await runTransaction(ref(database,`aulas/${periodoId}/${salonId}/${nodoPagos}/${key}`),v=>{
+      const eventoId=push(ref(database,`aulas/${periodoId}/${salonId}/${nodoPagoSemana}`)).key;
+      const r=await runTransaction(ref(database,`aulas/${periodoId}/${salonId}/${nodoPagoSemana}/${key}`),v=>{
         if(!v||v.estado!=='pagado')return;
         const cuando=Date.now();
         return {...v,estado:'anulado',anuladoEn:cuando,anuladoPor:usuario.uid,correcciones:(v.correcciones||0)+1,historial:{...(v.historial||{}),[eventoId]:{tipo:'anulacion',fecha:cuando,uid:usuario.uid,motivo:motivo.trim()}}};
@@ -648,9 +663,9 @@ export default function App() {
               <p>{esAdminGeneral?'Saldo de la carrera.':'Aportaciones del salón a la carrera.'}</p>
               <div className="ag-balance-bottom"><span>Contribución a carrera: <b>{reporteFondos?pesos(reporteFondos.aportacionCarrera):'—'}</b></span><span>Semana seleccionada: <b>{semana}</b></span></div>
             </div>
-            <div className="ag-stats"><div><CircleDollarSign size={21}/><strong>{pesos(cuotaSemanal)}</strong><span>Por semana</span></div><div><UsersRound size={21}/><strong>{cargando?'—':lista.length}</strong><span>Integrantes</span></div><div><CheckCircle2 size={21}/><strong>{vigenteParaRegistrar?pagaron:'—'}</strong><span>Pagaron esta selección</span></div></div>
+            <div className="ag-stats"><div><CircleDollarSign size={21}/><strong>{pesos(cuotaSemanal)}</strong><span>Por semana</span></div><div><UsersRound size={21}/><strong>{cargando?'—':lista.length}</strong><span>Integrantes</span></div><div><CheckCircle2 size={21}/><strong>{vigenteParaRegistrar?pagaron:'—'}</strong><span>Pagaron esta semana</span></div></div>
           </section>
-          {esCorteEnSalon&&<div className="ag-note"><History size={17}/> Nuevo ahorro desde la semana 5. Los saldos parten de $0 y las semanas anteriores no generan adeudos. Los registros previos permanecen fuera de esta contabilidad.</div>}
+          {esCorteEnSalon&&<div className="ag-note"><History size={17}/> El fondo nuevo comienza en la semana 5. Las semanas 1 a 4 pueden capturarse como «Pagos anteriores», sin generar adeudos automáticos ni sumar al saldo actual.</div>}
           {periodoId==='2026-2027-A'&&!ahorroNuevoActivo&&<div className="ag-error"><AlertTriangle size={17}/> El reinicio contable de la semana 5 aún no está activado. No registres movimientos hasta completar la migración segura.{esAdminGeneral&&<div style={{marginTop:12}}><SmallButton disabled={!!operacion} onClick={activarReinicioSeguro}><ShieldCheck size={16}/> Revisar y activar ahorro nuevo</SmallButton></div>}</div>}
           <Panel title="Ahorro de la carrera" icon={Wallet}>
             {reporteError&&<div className="ag-error"><AlertTriangle size={17}/>{reporteError}</div>}
@@ -666,11 +681,17 @@ export default function App() {
           </Panel>
 
           {!datos?.meta && !cargando&&<div className="ag-empty"><BookOpen size={31}/><h3>Este salón todavía no está configurado</h3><p>Un administrador debe importar la lista del Excel o crear un salón en «Ciclos y salones».</p><SmallButton onClick={()=>setVista('gestion')}>Ver configuración</SmallButton></div>}
-          {datos?.meta&&<Panel title="Registro semanal" icon={CalendarClock} action={<div className="ag-week-select"><button type="button" onClick={()=>setSemanaElegida(Math.max(semanaInicio,semana-1))} disabled={semana<=semanaInicio}>‹</button><select value={Math.max(semana,semanaInicio)} onChange={e=>setSemanaElegida(Number(e.target.value))}>{Array.from({length:Math.max(semanaActual-semanaInicio+1,1)},(_,i)=>i+semanaInicio).reverse().map(n=><option key={n} value={n}>Semana {n}</option>)}</select><button type="button" onClick={()=>setSemanaElegida(Math.min(semanaActual,semana+1))} disabled={semana>=semanaActual}>›</button></div>}>
-            <div className="ag-toolbar"><label className="ag-search"><Search size={17}/><input placeholder="Buscar por nombre o control..." value={search} onChange={e=>setSearch(e.target.value)}/></label><div className="ag-filters"><button className={filtro==='todos'?'active':''} onClick={()=>setFiltro('todos')}>Todos</button><button className={filtro==='pagado'?'active':''} onClick={()=>setFiltro('pagado')}>Pagaron</button><button className={filtro==='pendiente'?'active':''} onClick={()=>setFiltro('pendiente')}>Pendientes</button></div></div>
+          {datos?.meta&&<Panel title={esAnterior?'Pagos anteriores · registro semanal':'Registro semanal'} icon={CalendarClock} action={<div className="ag-week-select"><button type="button" onClick={()=>setSemanaElegida(Math.max(semanaMinima,semana-1))} disabled={semana<=semanaMinima}>‹</button><select value={semana} onChange={e=>setSemanaElegida(Number(e.target.value))}>{Array.from({length:Math.max(semanaActual-semanaMinima+1,1)},(_,i)=>i+semanaMinima).reverse().map(n=><option key={n} value={n}>Semana {n}{esCorteEnSalon&&n<5?' · Anterior':''}</option>)}</select><button type="button" onClick={()=>setSemanaElegida(Math.min(semanaActual,semana+1))} disabled={semana>=semanaActual}>›</button>{semana!==semanaActual&&<button type="button" title="Volver a la semana actual" onClick={()=>setSemanaElegida(0)}>Hoy</button>}</div>}>
+            {esAnterior&&<div className="ag-note"><History size={16}/> Semana {semana}: registra aquí los pagos atrasados del periodo anterior al reinicio. Se guardan como historial independiente, no generan adeudos automáticos y NO aumentan el saldo de la carrera. Si ya había un pago anterior registrado, se respeta y no se duplica.</div>}
+            <div className="ag-toolbar"><label className="ag-search"><Search size={17}/><input placeholder="Buscar por nombre o control..." value={search} onChange={e=>setSearch(e.target.value)}/></label><div className="ag-filters"><button className={filtro==='todos'?'active':''} onClick={()=>setFiltro('todos')}>Todos</button><button className={filtro==='pagado'?'active':''} onClick={()=>setFiltro('pagado')}>Pagaron</button><button className={filtro==='pendiente'?'active':''} onClick={()=>setFiltro('pendiente')}>{esAnterior?'Sin registrar':'Pendientes'}</button></div></div>
             {!vigenteParaRegistrar&&<div className="ag-note"><History size={16}/> Esta semana corresponde al historial anterior o a un periodo sin registros detallados. No se muestran supuestos adeudos.</div>}
-            <div className="ag-student-list">{visible.map(e=>{const estado=estadoAlumno(e);return <article className="ag-student" key={e.id}><span className="ag-avatar" aria-hidden="true"><UserRound size={22} strokeWidth={2.2}/></span><div className="ag-student-info"><strong title={e.nombre}>{e.nombreVisible}</strong><small>{e.control?`Control ${e.control} · `:''}Semana {semana}</small></div><span className={`ag-status ag-status-${estado}`}>{estado==='pagado'?<><Check size={14}/> Pagó</>:estado==='pendiente'?'Pendiente':'Sin desglose'}</span>{esAdmin&&vigenteParaRegistrar&&!vacacionesActivas&&!periodo?.meta?.cerradoEn&&<div className="ag-pay-actions">{estado==='pagado' ? (esAdminGeneral ? <button title="Anular este pago (con registro de corrección)" disabled={!!operacion} onClick={()=>anularPago(e)}><Minus size={17}/></button> : <span title="Solo el administrador general puede anular pagos"><Check size={18}/></span>) : <button title={`Registrar ${pesos(cuotaSemanal)} esta semana`} disabled={!!operacion} onClick={()=>registrarPago(e)}><Plus size={18}/></button>}</div>}</article>;})}{!visible.length&&<div className="ag-empty-small">No hay integrantes para este filtro.</div>}</div>
-            <div className="ag-list-foot">{vigenteParaRegistrar?`${pagaron} pagos registrados · ${pendientes} pendientes de esta semana`:'Sin desglose semanal para esta selección'}</div>
+            <div className="ag-student-list">{visible.map(e=>{const estado=estadoAlumno(e);return <article className="ag-student" key={e.id}><span className="ag-avatar" aria-hidden="true"><UserRound size={22} strokeWidth={2.2}/></span><div className="ag-student-info"><strong title={e.nombre}>{e.nombreVisible}</strong><small>{e.control?`Control ${e.control} · `:''}Semana {semana}</small></div><span className={`ag-status ag-status-${estado}`}>{estado==='pagado'?<><Check size={14}/> Pagó</>:estado==='pendiente'?(esAnterior?'Sin registrar':'Pendiente'):'Sin desglose'}</span>{esAdmin&&vigenteParaRegistrar&&!vacacionesActivas&&!periodo?.meta?.cerradoEn&&<div className="ag-pay-actions">{estado==='pagado' ? (esAnterior&&esPagoLegado(pagosLegado,e.id,semana) ? <span title="Pago legado conservado; no se puede modificar aquí"><LockKeyhole size={18}/></span> : esAdminGeneral ? <button title="Anular este pago (con registro de corrección)" disabled={!!operacion} onClick={()=>anularPago(e)}><Minus size={17}/></button> : <span title="Solo el administrador general puede anular pagos"><Check size={18}/></span>) : <button title={`Registrar ${pesos(cuotaSemanal)} esta semana`} disabled={!!operacion} onClick={()=>registrarPago(e)}><Plus size={18}/></button>}</div>}</article>;})}{!visible.length&&<div className="ag-empty-small">No hay integrantes para este filtro.</div>}</div>
+            <div className="ag-list-foot">{vigenteParaRegistrar?`${pagaron} pagos registrados · ${pendientes} ${esAnterior?'sin registrar (no son adeudos automáticos)':'pendientes de esta semana'}`:'Sin desglose semanal para esta selección'}</div>
+          </Panel>}
+          {esCorteEnSalon&&datos?.meta&&<Panel title="Pagos anteriores (semanas 1 a 4)" icon={History}>
+            <p className="ag-muted">Registro histórico independiente. Estas aportaciones no se suman al fondo nuevo de Ingeniería Industrial. Ninguna semana anterior genera deuda automática.</p>
+            <p className="ag-note">{resumenAnterior.registros} pagos históricos activos · {pesos(resumenAnterior.importeHistorico)} de importe registrado en esta sección (NO es saldo disponible).</p>
+            <div className="ag-timeline">{pagosHistAnteriores.slice(0,100).map(p=><div className="ag-timeline-row" key={p.id}><span className={`ag-timeline-mark ${p.estado==='pagado'?'ok':'cancel'}`}>{p.estado==='pagado'?<Check size={16}/>:<X size={16}/>}</span><div><strong>{nombreParaMostrar(integrantes[p.estudianteId]?.nombre||p.nombre||'Integrante',p.estudianteId,integrantes[p.estudianteId]?.formatoNombre)}</strong><small>Semana {p.semana} · {fechaLarga(p.creadoEn)} {p.estado==='anulado'?'· Anulación':''}{p.motivo?` · ${p.motivo}`:''}</small></div><b>{p.estado==='pagado'?'+':'−'}{pesos(p.monto)}</b></div>)}{!pagosHistAnteriores.length&&<p className="ag-muted">No hay capturas históricas nuevas. Los registros originales anteriores al reinicio permanecen intactos.</p>}</div>
           </Panel>}
           {datos?.meta&&<Panel title="Historial de aportaciones" icon={History}><p className="ag-muted">Movimientos del nuevo ahorro. Los registros anteriores permanecen respaldados y no se suman.</p><div className="ag-timeline">{pagosHist.slice(0,100).map(p=><div className="ag-timeline-row" key={p.id}><span className={`ag-timeline-mark ${p.estado==='pagado'?'ok':'cancel'}`}>{p.estado==='pagado'?<Check size={16}/>:<X size={16}/>}</span><div><strong title={p.nombre||integrantes[p.estudianteId]?.nombre||''}>{nombreParaMostrar(integrantes[p.estudianteId]?.nombre||p.nombre||'Integrante',p.estudianteId,integrantes[p.estudianteId]?.formatoNombre)}</strong><small>Semana {p.semana} · {fechaLarga(p.creadoEn)} {p.estado==='anulado'?'· Anulación':''}{p.motivo?` · ${p.motivo}`:''}</small></div><b>{p.estado==='pagado'?'+':'−'}{pesos(p.monto)}</b></div>)}{!pagosHist.length&&<p className="ag-muted">Todavía no hay pagos semanales detallados para este salón.</p>}</div></Panel>}
         {esAdmin&&!periodo?.meta?.cerradoEn&&datos?.meta&&(periodoId!=='2026-2027-A'||ahorroNuevoActivo)&&<Panel title="Solicitar retiro de la caja" icon={ArrowDownRight}><form className="ag-simple-form" onSubmit={solicitarRetiro}><label>Importe en pesos<input type="number" min="1" step="1" value={retiro.monto} onChange={e=>setRetiro({...retiro,monto:e.target.value})} placeholder="Ej. 200" required/></label><label>Motivo<input value={retiro.motivo} onChange={e=>setRetiro({...retiro,motivo:e.target.value})} placeholder="¿Para qué se solicita?" minLength={6} required/></label><SmallButton type="submit" variant="primary" disabled={!!operacion}><Plus size={17}/> Publicar solicitud</SmallButton></form><p className="ag-muted">Solicitar no descuenta dinero. El saldo se actualiza cuando se aprueba la solicitud.</p></Panel>}

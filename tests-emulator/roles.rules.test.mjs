@@ -100,6 +100,36 @@ try {
     await env.withSecurityRulesDisabled(ctx=>set(ref(ctx.database(),'periodos/2026-2027-A/meta/vacaciones'),{activas:false,semanaPausada:5,iniciadasEn:200,reanudadasEn:400}));
     await assertSucceeds(set(ref(responsable107,'aulas/2026-2027-A/107/pagosReinicio/e1_s0006'),pago6));
   });
+  // Registro histórico independiente: nunca modifica el saldo de la carrera.
+  await test('pagos anteriores: semanas 1 a 4 se registran por separado y la 5 no puede entrar',async()=>{
+    const viejo={tipoRegistro:'anterior',estudianteId:'e1',semana:3,monto:10,fondoGrupo:0,fondoCarrera:0,estado:'pagado',creadoEn:500,registradoPor:'resp107',historial:{evh1:{tipo:'registro',fecha:500,uid:'resp107'}}};
+    await assertSucceeds(set(ref(responsable107,'aulas/2026-2027-A/107/pagosAnteriores/e1_s0003'),viejo));
+    await assertFails(set(ref(responsable107,'aulas/2026-2027-A/107/pagosAnteriores/e1_s0003'),viejo));
+    await assertFails(set(ref(responsable107,'aulas/2026-2027-A/107/pagosAnteriores/e1_s0005'),{...viejo,semana:5}));
+    await assertFails(set(ref(responsable107,'aulas/2026-2027-A/107/pagosAnteriores/e1_s0004'),{...viejo,semana:4,fondoCarrera:10}));
+    const guardado=(await get(ref(general,'aulas/2026-2027-A/107/pagosAnteriores/e1_s0003'))).val();
+    assert.equal(guardado.tipoRegistro,'anterior');assert.equal(guardado.fondoCarrera,0);
+  });
+  await test('pagos anteriores: solo general anula con motivo sin borrar el registro',async()=>{
+    const path='aulas/2026-2027-A/107/pagosAnteriores/e1_s0003';
+    const anterior=(await get(ref(general,path))).val();
+    const anulado={...anterior,estado:'anulado',anuladoEn:800,anuladoPor:'adminGeneral',correcciones:1,historial:{...anterior.historial,evh2:{tipo:'anulacion',fecha:800,uid:'adminGeneral',motivo:'Registro accidental'}}};
+    await assertFails(set(ref(responsable107,path),anulado));
+    await assertSucceeds(set(ref(general,path),anulado));
+    await assertFails(set(ref(general,path),null));
+    assert.equal((await get(ref(general,path))).val().estado,'anulado');
+  });
+  await test('pagos anteriores: no se duplica pago legado de la misma semana',async()=>{
+    const path='aulas/2026-2027-A/107/pagos/e1_s0002';
+    await env.withSecurityRulesDisabled(ctx=>set(ref(ctx.database(),path),{estudianteId:'e1',semana:2,estado:'pagado',monto:10,creadoEn:50}));
+    const hist={tipoRegistro:'anterior',estudianteId:'e1',semana:2,monto:10,fondoGrupo:0,fondoCarrera:0,estado:'pagado',creadoEn:700,registradoPor:'resp107',historial:{ev1:{tipo:'registro',fecha:700,uid:'resp107'}}};
+    await assertFails(set(ref(responsable107,'aulas/2026-2027-A/107/pagosAnteriores/e1_s0002'),hist));
+  });
+  await test('pagos anteriores: vacaciones impiden nuevas capturas',async()=>{
+    await env.withSecurityRulesDisabled(ctx=>set(ref(ctx.database(),'periodos/2026-2027-A/meta/vacaciones/activas'),true));
+    const hist={tipoRegistro:'anterior',estudianteId:'e1',semana:4,monto:10,fondoGrupo:0,fondoCarrera:0,estado:'pagado',creadoEn:700,registradoPor:'resp107',historial:{ev1:{tipo:'registro',fecha:700,uid:'resp107'}}};
+    await assertFails(set(ref(responsable107,'aulas/2026-2027-A/107/pagosAnteriores/e1_s0004'),hist));
+  });
 } finally {
   await env.cleanup();
 }
