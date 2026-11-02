@@ -34,7 +34,22 @@ export default async function handler(req,res){
     const p=periodoSnap.val();
     if(!p?.salones?.[salon] || p?.meta?.cerradoEn)
       return res.status(409).json({error:'El salón no existe o el ciclo está cerrado.'});
-    const codigo=generarCodigoSalon(),digest=digestCodigoSalon(codigo),ahora=Date.now();
+    // Impedir PIN idénticos entre salones que tengan un código activo.
+    const existentes=(await db.ref('codigosSalon').get()).val()||{};
+    const usados=new Set(Object.values(existentes).flatMap(ciclo=>
+      Object.values(ciclo||{}).map(item=>item?.digest).filter(Boolean)));
+    if(accion==='rotar'){
+      const anterior=existentes?.[periodo]?.[salon]?.digest;
+      if(anterior)usados.add(anterior); // Nunca reutilizar el PIN anterior al rotarlo.
+    }
+    let codigo='',digest='';
+    for(let intento=0;intento<50;intento++){
+      const candidato=generarCodigoSalon();
+      const hash=digestCodigoSalon(candidato);
+      if(!usados.has(hash)){codigo=candidato;digest=hash;break;}
+    }
+    if(!codigo)return res.status(503).json({error:'No fue posible generar un PIN único. Vuelve a intentarlo.'});
+    const ahora=Date.now();
     const configRef=db.ref(`codigosSalon/${periodo}/${salon}`);
     const resultado=await configRef.transaction(actual=>{
       if(accion==='crear' && actual)return;

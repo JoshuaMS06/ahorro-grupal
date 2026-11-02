@@ -50,7 +50,7 @@ export default function CodigosSalonAdmin({usuario}){
     catch{setError('No se pudo copiar automáticamente. Selecciona el código y cópialo manualmente.');}
   };
   return <div className="ag-codes-admin">
-    <p className="ag-muted">Genera un código diferente para cada salón. Los alumnos entran sin registrarse, pero solo pueden consultar la información de su grupo. Los responsables siguen utilizando su propia cuenta.</p>
+    <p className="ag-muted">Genera un PIN aleatorio de 4 dígitos por salón. Los estudiantes lo usan sin registrarse y solo pueden consultar su grupo. Los códigos largos que ya compartiste seguirán funcionando hasta que los cambies. Si un PIN se difunde fuera del salón, renuévalo. Los responsables conservan sus cuentas.</p>
     <button type="button" className="ag-btn" onClick={cargar} disabled={cargando||!!ocupado}>
       <RefreshCcw size={17}/> Actualizar salones
     </button>

@@ -1,10 +1,11 @@
 import {createHash,randomBytes} from 'node:crypto';
 import {adminAuth,adminDatabase} from '../lib/adminServidor.js';
-import {codigoSalonCoincide,normalizarCodigoSalon} from '../lib/codigosSalon.js';
+import {codigoSalonCoincide,esCodigoSalonValido} from '../lib/codigosSalon.js';
 import {isClassCode,isPeriodId} from '../lib/aulas.js';
 
+// Los PIN de 4 cifras son fáciles de probar al azar: limitar intentos fallidos.
 const VENTANA=15*60*1000;
-const MAX_INTENTOS=8;
+const MAX_INTENTOS=5;
 
 export default async function handler(req,res){
   res.setHeader('Cache-Control','no-store');
@@ -12,7 +13,7 @@ export default async function handler(req,res){
   try{
     const {periodo,salon,codigo}=req.body||{};
     if(!isPeriodId(periodo)||!isClassCode(salon)||typeof codigo!=='string'||codigo.length>45
-       ||normalizarCodigoSalon(codigo).length!==16)
+       ||!esCodigoSalonValido(codigo))
       return res.status(400).json({error:'Selecciona un salón e introduce un código válido.'});
     const db=adminDatabase();
     // No se almacena ni devuelve la dirección IP. El contador registra solo su digest.
