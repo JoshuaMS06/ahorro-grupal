@@ -37,3 +37,27 @@
 .ag-request-correction select{background:#1c1028;color:white;border:1px solid #785e91;border-radius:10px;padding:10px;width:100%}
 .ag-request-correction button{min-height:40px}
 .ag-request .ag-muted{display:flex;align-items:center;gap:6px}
+
+
+/* Entrada sin correo ni contraseña */
+.ag-access-code-form{display:flex;flex-direction:column;gap:12px;margin-top:19px;padding:19px;border:1px solid #775b9c;border-radius:17px;background:rgba(48,30,72,.5)}
+.ag-access-code-form>.ag-muted{margin:0}
+.ag-access-code-form>.ag-access-subtitle{text-align:left;margin:0}
+.ag-access-code-label{display:flex;flex-direction:column;gap:8px;font-size:13px;font-weight:650;color:#e9d9fa}
+.ag-access-code-label>span{display:flex;align-items:center;gap:8px}
+.ag-access-code-label input{box-sizing:border-box;width:100%;max-width:430px;min-width:0;border:1px solid #8f6ec5;background:#1c1028;border-radius:12px;color:white;padding:15px;font-size:clamp(17px,3vw,23px);font-weight:750;letter-spacing:.08em;text-transform:uppercase}
+.ag-access-code-label input::placeholder{color:#9c8db2;font-size:clamp(13px,2.4vw,19px)}
+.ag-access-code-submit{align-self:flex-start;min-height:45px;display:inline-flex;align-items:center;gap:9px}
+.ag-access-admin-link{margin-top:20px}
+.ag-codes-list{display:grid;gap:12px;margin:16px 0}
+.ag-code-card{padding:16px;border-radius:14px;border:1px solid #675085;background:#241633;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.ag-code-info{display:flex;flex-direction:column;gap:5px}
+.ag-code-info strong{font-size:18px}
+.ag-code-info small{color:#cbb8db}
+.ag-code-info span{font-size:12px;color:#d6bbf4}
+.ag-code-card>.ag-btn{display:flex;align-items:center;gap:8px;min-height:40px}
+.ag-code-reveal{border:2px solid #b991ff;border-radius:17px;background:#34254b;padding:19px;margin:17px 0;display:grid;gap:10px}
+.ag-code-reveal>div:first-child{display:flex;align-items:center;gap:10px}
+.ag-code-reveal p{margin:0;color:#eadcf6;font-size:13px}
+.ag-code-reveal code{display:block;max-width:100%;overflow-wrap:anywhere;user-select:all;background:#1b1228;border:1px solid #916abc;padding:15px;border-radius:11px;color:#f4d8ff;font-size:clamp(16px,2.5vw,23px);font-weight:780;letter-spacing:.075em}
+@media(max-width:540px){.ag-access-code-submit{align-self:stretch;justify-content:center}.ag-code-card>.ag-btn{width:100%;justify-content:center}}

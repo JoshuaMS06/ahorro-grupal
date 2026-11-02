@@ -7,6 +7,7 @@ const origen='2026-2027-A';
 function ejemplo(){return {
  roles:{adminGeneralUid:'general',lectores:{lector507:{periodo:origen,salon:'507',aprobadoEn:123},lectorFin:{periodo:origen,salon:'1007',aprobadoEn:124}},porUsuario:{responsable:{periodo:origen,salon:'507',plaza:'1'},fin:{periodo:origen,salon:'1007',plaza:'2'}},responsables:{[origen]:{'507':{'1':'responsable'},'1007':{'2':'fin'}}}},
  periodos:{[origen]:{meta:{nombre:'Actual',lunesBase:'2026-10-19',semanaBase:4,creadoEn:1,reinicioContable:{version:1,semanaInicio:5,activadoEn:1}},salones:{'507':{nombre:'507'},'107':{nombre:'107'},'1007':{nombre:'1007'}}}},
+ codigosSalon:{[origen]:{'507':{digest:'x',version:1},'107':{digest:'y',version:2}}},
  ahorro:{integrantes:{'Uno':{pagos:3}}},
  aulas:{[origen]:{
   '507':{meta:{cuotaSemanal:20,creadoEn:1},integrantes:{s001:{nombre:'Uno',aliasLegado:'Uno'}},pagos:{p1:{estado:'pagado',monto:20}}},
@@ -27,6 +28,8 @@ test('el botón registra fecha efectiva, no pide lunes ni programa cron',()=>{
  assert.equal(raiz.aulas['2026-2027-B']['607'].pagos,undefined);
  assert.deepEqual(raiz.aulas[origen]['507'].pagos,antes.aulas[origen]['507'].pagos);
  assert.deepEqual(raiz.ahorro,antes.ahorro);
+ assert.equal(raiz.codigosSalon[origen],undefined);
+ assert.deepEqual(datos.codigosSalon,antes.codigosSalon);
  assert.equal(raiz.aulas['2026-2027-B']['1007'],undefined);
  assert.equal(detalles.salonesArchivados,1);
  assert.equal(raiz.roles.porUsuario.responsable.salon,'607');

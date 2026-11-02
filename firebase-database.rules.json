@@ -40,13 +40,13 @@
         "meta": {
           ".write": "auth != null && root.child('roles/adminGeneralUid').val() === auth.uid && newData.exists() && !data.child('cerradoEn').exists() && newData.child('reinicioContable').child('version').val() === data.child('reinicioContable').child('version').val() && newData.child('reinicioContable').child('semanaInicio').val() === data.child('reinicioContable').child('semanaInicio').val() && newData.child('reinicioContable').child('activadoEn').val() === data.child('reinicioContable').child('activadoEn').val()",
           ".validate": "newData.hasChildren(['nombre','lunesBase','semanaBase','creadoEn']) && newData.child('nombre').isString() && newData.child('lunesBase').isString() && newData.child('semanaBase').isNumber() && newData.child('semanaBase').val() >= 1 && newData.child('creadoEn').isNumber()",
-          ".read": "auth != null && (root.child('roles/porUsuario').child(auth.uid).child('periodo').val() === $periodo || root.child('roles/lectores').child(auth.uid).child('periodo').val() === $periodo)"
+          ".read": "auth != null && (root.child('roles/porUsuario').child(auth.uid).child('periodo').val() === $periodo || root.child('roles/lectores').child(auth.uid).child('periodo').val() === $periodo) || (auth != null && auth.token.rolSalon === 'consulta' && auth.token.periodoCodigo === $periodo && root.child('codigosSalon').child($periodo).child(auth.token.salonCodigo).child('version').val() === auth.token.versionCodigo)"
         },
         "salones": {
           "$salon": {
             ".write": "auth != null && root.child('roles/adminGeneralUid').val() === auth.uid && !data.exists() && newData.exists()",
             ".validate": "newData.hasChildren(['nombre']) && newData.child('nombre').isString()",
-            ".read": "(auth != null && root.child('roles/lectores').child(auth.uid).child('periodo').val() === $periodo && root.child('roles/lectores').child(auth.uid).child('salon').val() === $salon) || (auth != null && root.child('roles/porUsuario').child(auth.uid).child('periodo').val() === $periodo && root.child('roles/porUsuario').child(auth.uid).child('salon').val() === $salon && (root.child('roles/responsables').child($periodo).child($salon).child('1').val() === auth.uid || root.child('roles/responsables').child($periodo).child($salon).child('2').val() === auth.uid))"
+            ".read": "(auth != null && root.child('roles/lectores').child(auth.uid).child('periodo').val() === $periodo && root.child('roles/lectores').child(auth.uid).child('salon').val() === $salon) || (auth != null && root.child('roles/porUsuario').child(auth.uid).child('periodo').val() === $periodo && root.child('roles/porUsuario').child(auth.uid).child('salon').val() === $salon && (root.child('roles/responsables').child($periodo).child($salon).child('1').val() === auth.uid || root.child('roles/responsables').child($periodo).child($salon).child('2').val() === auth.uid)) || (auth != null && auth.token.rolSalon === 'consulta' && auth.token.periodoCodigo === $periodo && auth.token.salonCodigo === $salon && root.child('codigosSalon').child($periodo).child($salon).child('version').val() === auth.token.versionCodigo)"
           }
         }
       }
@@ -54,7 +54,7 @@
     "aulas": {
       "$periodo": {
         "$salon": {
-          ".read": "(auth != null && root.child('roles/adminGeneralUid').val() === auth.uid) || (auth != null && root.child('roles/porUsuario').child(auth.uid).child('periodo').val() === $periodo && root.child('roles/porUsuario').child(auth.uid).child('salon').val() === $salon && (root.child('roles/responsables').child($periodo).child($salon).child('1').val() === auth.uid || root.child('roles/responsables').child($periodo).child($salon).child('2').val() === auth.uid)) || (auth != null && root.child('roles/lectores').child(auth.uid).child('periodo').val() === $periodo && root.child('roles/lectores').child(auth.uid).child('salon').val() === $salon)",
+          ".read": "(auth != null && root.child('roles/adminGeneralUid').val() === auth.uid) || (auth != null && root.child('roles/porUsuario').child(auth.uid).child('periodo').val() === $periodo && root.child('roles/porUsuario').child(auth.uid).child('salon').val() === $salon && (root.child('roles/responsables').child($periodo).child($salon).child('1').val() === auth.uid || root.child('roles/responsables').child($periodo).child($salon).child('2').val() === auth.uid)) || (auth != null && root.child('roles/lectores').child(auth.uid).child('periodo').val() === $periodo && root.child('roles/lectores').child(auth.uid).child('salon').val() === $salon) || (auth != null && auth.token.rolSalon === 'consulta' && auth.token.periodoCodigo === $periodo && auth.token.salonCodigo === $salon && root.child('codigosSalon').child($periodo).child($salon).child('version').val() === auth.token.versionCodigo)",
           "meta": {
             ".write": "auth != null && root.child('roles/adminGeneralUid').val() === auth.uid && !data.exists() && newData.exists()",
             ".validate": "newData.hasChildren(['nombre','inicioDetalle','cuotaSemanal','creadoEn']) && newData.child('nombre').isString() && newData.child('inicioDetalle').isNumber() && newData.child('inicioDetalle').val() >= 1 && newData.child('cuotaSemanal').isNumber() && ((newData.child('tipoAhorro').val() === 'carrera' && (newData.child('cuotaSemanal').val() === 10 || newData.child('cuotaSemanal').val() === 20)) || (!newData.child('tipoAhorro').exists() && (($periodo === '2026-2027-A' && $salon === '507' && newData.child('cuotaSemanal').val() === 20) || (!( $periodo === '2026-2027-A' && $salon === '507') && newData.child('cuotaSemanal').val() === 10)))) && newData.child('creadoEn').isNumber()"
@@ -162,6 +162,14 @@
           ".validate": false
         }
       }
+    },
+    "codigosSalon": {
+      ".read": false,
+      ".write": false
+    },
+    "intentosCodigoSalon": {
+      ".read": false,
+      ".write": false
     }
   }
 }

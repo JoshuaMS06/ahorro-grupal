@@ -218,6 +218,57 @@ try {
     await assertFails(get(ref(alumno107,'aulas/2026-2027-A/107')));
     await assertSucceeds(get(ref(general,'aulas/2026-2027-A/107')));
   });
+  // Accesos por código: autenticación técnica de Firebase con claims firmados.
+  await env.withSecurityRulesDisabled(ctx=>set(ref(ctx.database(),'codigosSalon/2026-2027-A'),{
+    '107':{digest:'digest-prueba-107',version:1,actualizadoEn:1},
+    '507':{digest:'digest-prueba-507',version:4,actualizadoEn:1}
+  }));
+  const codigo107=env.authenticatedContext('visitante107',{
+    rolSalon:'consulta',periodoCodigo:'2026-2027-A',salonCodigo:'107',versionCodigo:1
+  }).database();
+  const codigo507=env.authenticatedContext('visitante507',{
+    rolSalon:'consulta',periodoCodigo:'2026-2027-A',salonCodigo:'507',versionCodigo:4
+  }).database();
+  const codigoInvalido=env.authenticatedContext('visitanteMal',{
+    rolSalon:'consulta',periodoCodigo:'2026-2027-A',salonCodigo:'507',versionCodigo:3
+  }).database();
+
+  await test('código del 507 permite leer solo 507 y metadatos del propio ciclo',async()=>{
+    await assertSucceeds(get(ref(codigo507,'aulas/2026-2027-A/507')));
+    await assertFails(get(ref(codigo507,'aulas/2026-2027-A/107')));
+    await assertFails(get(ref(codigo507,'aulas/2026-2027-A/307')));
+    await assertFails(get(ref(codigo507,'aulas')));
+    await assertFails(get(ref(codigo507,'periodos')));
+    await assertSucceeds(get(ref(codigo507,'periodos/2026-2027-A/meta')));
+    await assertSucceeds(get(ref(codigo507,'periodos/2026-2027-A/salones/507')));
+    await assertFails(get(ref(codigo507,'periodos/2026-2027-A/salones/107')));
+  });
+  await test('código del 107 no puede consultar el ahorro privado del 507',async()=>{
+    await assertSucceeds(get(ref(codigo107,'aulas/2026-2027-A/107')));
+    await assertFails(get(ref(codigo107,'aulas/2026-2027-A/507')));
+    await assertFails(get(ref(codigo107,'profesoresAhorro')));
+    await assertFails(get(ref(codigo107,'roles/lectores/alumno507')));
+    await assertFails(get(ref(codigo107,'codigosSalon/2026-2027-A/107')));
+    await assertFails(get(ref(codigo107,'intentosCodigoSalon')));
+  });
+  await test('ningún código permite registrar, alterar o eliminar aportaciones',async()=>{
+    await assertFails(set(ref(codigo507,'aulas/2026-2027-A/507/pagosReinicio/prueba'),{
+      monto:20,estado:'pagado',fondoGrupo:10,fondoCarrera:10
+    }));
+    await assertFails(set(ref(codigo107,'aulas/2026-2027-A/107/integrantes/otro'),{nombre:'Otro'}));
+    await assertFails(set(ref(codigo507,'codigosSalon/2026-2027-A/507/version'),99));
+    await assertFails(set(ref(codigo107,'roles/porUsuario/visitante107'),{periodo:'2026-2027-A',salon:'507',plaza:'1'}));
+  });
+  await test('versión anterior y usuario sin código vigente no pueden leer',async()=>{
+    await assertFails(get(ref(codigoInvalido,'aulas/2026-2027-A/507')));
+    await assertFails(get(ref(invitado,'aulas/2026-2027-A/507')));
+  });
+  await test('rotación del código revoca lectura a las sesiones antiguas',async()=>{
+    await env.withSecurityRulesDisabled(ctx=>set(ref(ctx.database(),'codigosSalon/2026-2027-A/507/version'),5));
+    await assertFails(get(ref(codigo507,'aulas/2026-2027-A/507')));
+    await assertFails(get(ref(codigo507,'periodos/2026-2027-A/salones/507')));
+    await assertSucceeds(get(ref(general,'aulas/2026-2027-A/507')));
+  });
 } finally {
   await env.cleanup();
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, connectAuthEmulator, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification, updateProfile, reload, signOut, sendPasswordResetEmail } from 'firebase/auth';
+import { getAuth, connectAuthEmulator, onAuthStateChanged, signInWithEmailAndPassword, signInWithCustomToken, signOut, sendPasswordResetEmail } from 'firebase/auth';
 import { getDatabase, connectDatabaseEmulator, ref, get, onValue, runTransaction, push, set } from 'firebase/database';
 import {
   BookOpen, Bell, BellRing, CalendarClock, Check, CheckCircle2,
@@ -21,6 +21,7 @@ import { prepararExcel, revisarCoincidencias } from '../lib/importarExcel.js';
 import { aplicarVacaciones, esConfirmacionValida } from '../lib/vacaciones.js';
 import AccesoSalon from './AccesoSalon.jsx';
 import AccesosAdministracion from './AccesosAdministracion.jsx';
+import CodigosSalonAdmin from './CodigosSalonAdmin.jsx';
 import './index.css';
 import './App.css';
 
@@ -86,8 +87,7 @@ export default function App() {
   const [uidAdminGeneral,setUidAdminGeneral]=useState('');
   const [asignacion,setAsignacion]=useState(null);
   const [asignacionLector,setAsignacionLector]=useState(null);
-  const [solicitudActual,setSolicitudActual]=useState(null);
-  const [correoVerificado,setCorreoVerificado]=useState(false);
+  const [sesionCodigo,setSesionCodigo]=useState(null);
   const [errorAcceso,setErrorAcceso]=useState('');
   const [responsables,setResponsables]=useState({});
   const [perfilesResponsables,setPerfilesResponsables]=useState({});
@@ -126,19 +126,35 @@ export default function App() {
   const esResponsable=Boolean(usuario && !esAdminGeneral && esResponsableDeSalon(asignacion,periodoId,salonId));
   const esAdmin=esAdminGeneral || esResponsable;
   const esLector=Boolean(usuario && !esAdmin && asignacionLector?.periodo===periodoId && asignacionLector?.salon===salonId);
-  const tieneAcceso=esAdmin || esLector;
+  const esInvitadoCodigo=Boolean(usuario && sesionCodigo?.periodo===periodoId && sesionCodigo?.salon===salonId);
+  const tieneAcceso=esAdmin || esLector || esInvitadoCodigo;
   const vistaActiva=esAdminGeneral?vista:(esResponsable?(vista==='panel'?'pagos':vista):'pagos');
   const datos=dataSnapshot?.periodo===periodoId && dataSnapshot?.salon===salonId ? dataSnapshot.value : null;
   const reporteClave=`${periodoId}/${salonId}`;
-  const reporteFondos=esAdmin && estadoReporteFondos?.clave===reporteClave && estadoReporteFondos?.uid===usuario?.uid ? estadoReporteFondos.informe : null;
-  const reporteError=esAdmin && estadoReporteError?.clave===reporteClave && estadoReporteError?.uid===usuario?.uid ? estadoReporteError.texto : '';
+  const reporteFondos=tieneAcceso && estadoReporteFondos?.clave===reporteClave && estadoReporteFondos?.uid===usuario?.uid ? estadoReporteFondos.informe : null;
+  const reporteError=tieneAcceso && estadoReporteError?.clave===reporteClave && estadoReporteError?.uid===usuario?.uid ? estadoReporteError.texto : '';
 
 
   // Nuevos roles: un solo administrador general y dos plazas por salón.
   // Antes de publicar se deben configurar roles/adminGeneralUid y probar las reglas en el emulador.
   useEffect(()=>{
     const unsub=onAuthStateChanged(auth,u=>{
-      setUsuario(u);setUidAdminGeneral('');setAsignacion(null);setAsignacionLector(null);setSolicitudActual(null);setCorreoVerificado(!!u?.emailVerified);setErrorAcceso('');setLoginError('');
+      setUsuario(u);setUidAdminGeneral('');setAsignacion(null);setAsignacionLector(null);setSesionCodigo(null);setErrorAcceso('');setLoginError('');
+      // La sesión firmada por Firebase contiene exclusivamente salón, ciclo y
+      // versión del código. Nunca se confía en un selector guardado en el navegador.
+      if(u){
+        void u.getIdTokenResult().then(({claims})=>{
+          if(auth.currentUser?.uid!==u.uid||claims.rolSalon!=='consulta')return;
+          const {periodoCodigo,salonCodigo}=claims;
+          if(typeof periodoCodigo!=='string'||typeof salonCodigo!=='string')return;
+          setSesionCodigo({periodo:periodoCodigo,salon:salonCodigo});
+          setPeriodoId(periodoCodigo);setSalonId(salonCodigo);
+          setDataSnapshot(null);setSemanaElegida(0);setCargando(true);
+          setVista('pagos');setLoginOpen(false);
+          localStorage.setItem('ag:periodo',periodoCodigo);
+          localStorage.setItem('ag:salon',salonCodigo);
+        }).catch(()=>setErrorAcceso('No se pudo verificar la sesión. Vuelve a introducir el código.'));
+      }
       setPeriodos({});setDbError('');setDataSnapshot(null);
       setResponsables({});setPerfilesResponsables({});setReporteFondos(null);setReporteError(null);
       setSemanaElegida(0);setSearch('');
@@ -177,10 +193,7 @@ export default function App() {
         setLoginOpen(false);
       }
     },err=>setErrorAcceso(`No se pudo consultar tu autorización: ${avisoError(err)}`));
-    const stopSolicitud=onValue(ref(database,`solicitudesSalon/${usuario.uid}`),
-      snap=>setSolicitudActual(snap.val()||null),
-      err=>setErrorAcceso(`No se pudo consultar tu solicitud: ${avisoError(err)}`));
-    return ()=>{stopRol();stopSolicitud();};
+    return ()=>stopRol();
   },[usuario]);
   useEffect(()=>{
     if(!tieneAcceso)return;
@@ -250,10 +263,10 @@ export default function App() {
     return ()=>clearTimeout(timer);
   },[toast]);
 
-  const periodKeys=Object.keys(periodos).filter(id=>esAdminGeneral || (asignacion?.periodo===id) || (asignacionLector?.periodo===id)).sort().reverse();
+  const periodKeys=Object.keys(periodos).filter(id=>esAdminGeneral || (asignacion?.periodo===id) || (asignacionLector?.periodo===id) || sesionCodigo?.periodo===id).sort().reverse();
   const periodo=periodos[periodoId]||null;
   const destinoSiguiente=(()=>{try{return periodoSiguiente(periodoId);}catch{return '';}})();
-  const salones=Object.keys(periodo?.salones||{}).filter(id=>esAdminGeneral || (asignacion?.periodo===periodoId && asignacion?.salon===id) || (asignacionLector?.periodo===periodoId && asignacionLector?.salon===id)).sort((a,b)=>a.localeCompare(b,'es',{numeric:true}));
+  const salones=Object.keys(periodo?.salones||{}).filter(id=>esAdminGeneral || (asignacion?.periodo===periodoId && asignacion?.salon===id) || (asignacionLector?.periodo===periodoId && asignacionLector?.salon===id) || (sesionCodigo?.periodo===periodoId && sesionCodigo?.salon===id)).sort((a,b)=>a.localeCompare(b,'es',{numeric:true}));
   const vacacionesActivas=periodo?.meta?.vacaciones?.activas===true;
   const semanaActual=semanaPeriodo(periodo?.meta,fecha);
   const semanaMinima=primeraSemanaVisible(periodos,periodoId,periodo?.meta,datos?.meta);
@@ -352,41 +365,25 @@ export default function App() {
     catch(e){setToast(`No se completó la operación: ${avisoError(e)}`);}
     finally{setOperacion('');}
   };
-  const registrarLector=async({correo,clave,nombre})=>{
-    if(usuario)return;
-    setErrorAcceso('');
-    await withOperation('crear-cuenta',async()=>{
-      const cuenta=await createUserWithEmailAndPassword(auth,correo.trim().toLowerCase(),clave);
-      await updateProfile(cuenta.user,{displayName:nombre.trim()});
-      await sendEmailVerification(cuenta.user);
-      setCorreoVerificado(false);
-      return 'Cuenta creada. Revisa tu correo y verifica el enlace antes de solicitar un salón.';
-    });
-  };
-  const comprobarCorreo=async()=>{
-    if(!auth.currentUser)return;
-    await withOperation('verificar-correo',async()=>{
-      await reload(auth.currentUser);
-      await auth.currentUser.getIdToken(true);
-      setCorreoVerificado(auth.currentUser.emailVerified===true);
-      return auth.currentUser.emailVerified?'Correo verificado. Ya puedes solicitar tu salón.':'El correo aún no está verificado. Revisa tu bandeja y spam.';
-    });
-  };
-  const reenviarCorreo=async()=>{
-    if(!auth.currentUser)return;
-    await withOperation('reenviar-correo',async()=>{
-      await sendEmailVerification(auth.currentUser);
-      return 'Se envió otro enlace de verificación al correo de tu cuenta.';
-    });
-  };
-  const solicitarAcceso=async({periodo,salon})=>{
-    if(!usuario||!correoVerificado||solicitudActual)return;
-    await withOperation('solicitar-salon',async()=>{
-      await set(ref(database,`solicitudesSalon/${usuario.uid}`),{
-        periodo,salon,estado:'pendiente',creadoEn:Date.now()
+  const ingresarConCodigo=async({periodo,salon,codigo})=>{
+    if(operacion)return;
+    setOperacion('verificar-codigo');setErrorAcceso('');
+    try{
+      if(usarEmuladores)throw Error('La validación de códigos necesita las funciones API de Vercel. Usa la versión web publicada para probar el acceso.');
+      const response=await fetch('/api/ingresar-salon',{
+        method:'POST',headers:{'Content-Type':'application/json'},cache:'no-store',
+        body:JSON.stringify({periodo,salon,codigo})
       });
-      return `Solicitud para salón ${salon} enviada. El administrador general debe autorizarla.`;
-    });
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok)throw Error(data.error||`No se pudo verificar el código (HTTP ${response.status}).`);
+      if(!data.token)throw Error('El servidor no devolvió una sesión válida.');
+      // Firebase Auth crea una sesión técnica sin registro manual ni contraseña.
+      await signInWithCustomToken(auth,data.token);
+      setPeriodoId(periodo);setSalonId(salon);setVista('pagos');
+      localStorage.setItem('ag:periodo',periodo);
+      localStorage.setItem('ag:salon',salon);
+    }catch(error){setErrorAcceso(error.message||'No fue posible ingresar a tu salón.');}
+    finally{setOperacion('');}
   };
   const signIn=async e=>{
     e.preventDefault();setLoginBusy(true);setLoginError('');
@@ -737,21 +734,19 @@ export default function App() {
           {esAdmin&&<button onClick={()=>{setVista('profesores');setMostrarMenu(false);}}>Profesores</button>}
           {esAdmin&&<button onClick={()=>{setVista('gestion');setMostrarMenu(false);}}>Ciclos y grupos</button>}
           {esAdminGeneral&&<button onClick={()=>{setVista('roles');setMostrarMenu(false);}}>Responsables de salón</button>}
-          {esAdminGeneral&&<button onClick={()=>{setVista('lectores');setMostrarMenu(false);}}>Accesos de estudiantes</button>}
+          {esAdminGeneral&&<button onClick={()=>{setVista('lectores');setMostrarMenu(false);}}>Códigos de acceso</button>}
           <button onClick={()=>{instalar();setMostrarMenu(false);}}>Instalar app</button>
         </nav>}
-      {!tieneAcceso ? <AccesoSalon usuario={usuario} solicitud={solicitudActual} correoVerificado={correoVerificado}
-        abrirLogin={()=>setLoginOpen(true)} registrar={registrarLector} solicitar={solicitarAcceso}
-        verificarCorreo={comprobarCorreo} reenviarCorreo={reenviarCorreo} ocupado={!!operacion}
-        error={errorAcceso} modoDemo={usarEmuladores}/> : <main className="ag-main">
+      {!tieneAcceso ? <AccesoSalon abrirLogin={()=>setLoginOpen(true)} ingresarConCodigo={ingresarConCodigo}
+        ocupado={!!operacion} error={errorAcceso} modoDemo={usarEmuladores}/> : <main className="ag-main">
         {dbError&&<div className="ag-error"><AlertTriangle size={18}/> {dbError}</div>}
-        <div className="ag-intro"><div><span className="ag-kicker">{esAdminGeneral?'ADMINISTRACIÓN GENERAL · INGENIERÍA INDUSTRIAL':`SALÓN · ${salonId} · ${periodo?.meta?.nombre||periodoId}`} {periodo?.meta?.cerradoEn?' · CICLO ARCHIVADO':''}</span><h1>{esAdminGeneral?'Panel de administración':'Control de aportaciones'}</h1><p>{esAdminGeneral?'Gestión del fondo de la carrera':`Registro de tu salón · ${pesos(cuotaSemanal)} por semana.`}</p></div><div className="ag-week-pill"><CalendarClock size={19}/> Semana {semanaActual}</div></div>
+        <div className="ag-intro"><div><span className="ag-kicker">{esAdminGeneral?'ADMINISTRACIÓN GENERAL · INGENIERÍA INDUSTRIAL':`SALÓN · ${salonId} · ${periodo?.meta?.nombre||periodoId}`} {periodo?.meta?.cerradoEn?' · CICLO ARCHIVADO':''}</span><h1>{esAdminGeneral?'Panel de administración':'Control de aportaciones'}</h1><p>{esAdminGeneral?'Gestión del fondo de la carrera':esInvitadoCodigo?`Consulta privada del salón · ${pesos(cuotaSemanal)} por semana.`:`Registro de tu salón · ${pesos(cuotaSemanal)} por semana.`}</p></div><div className="ag-week-pill"><CalendarClock size={19}/> Semana {semanaActual}</div></div>
         {vacacionesActivas&&<div className="ag-note"><PauseCircle size={17}/> Vacaciones activas: semana {semanaActual} congelada. No se registran aportaciones ni nuevas semanas pendientes.</div>}
         <div className="ag-selectors">
           <label>Ciclo escolar<select disabled={!esAdminGeneral} value={periodoId} onChange={e=>cambiarPeriodo(e.target.value)}>{periodKeys.length ? periodKeys.map(k=><option key={k} value={k}>{periodos[k]?.meta?.nombre||k}</option>):<option value={defaultPeriod}>Sin listas importadas</option>}</select></label>
           <label>Salón<select disabled={!esAdminGeneral} value={salonId} onChange={e=>cambiarSalon(e.target.value)}>{salones.length ? salones.map(k=><option key={k} value={k}>{periodo?.salones?.[k]?.nombre||`Salón ${k}`}</option>):<option value="507">Sin salones</option>}</select></label>
         </div>
-        <div className="ag-tabs" role="tablist" aria-label="Apartados">{esAdminGeneral&&<button className={vistaActiva==='panel'?'active':''} onClick={()=>setVista('panel')}><LayoutDashboard size={17}/> Inicio</button>}<button className={vistaActiva==='pagos'?'active':''} onClick={()=>setVista('pagos')}><Wallet size={17}/> Aportaciones</button><button className={vistaActiva==='profesores'?'active':''} onClick={()=>setVista('profesores')}><GraduationCap size={17}/> Profesores</button><button className={vistaActiva==='gestion'?'active':''} onClick={()=>setVista('gestion')}><BookOpen size={17}/> Ciclos y salones</button>{esAdminGeneral&&<button className={vistaActiva==='roles'?'active':''} onClick={()=>setVista('roles')}><ShieldCheck size={17}/> Responsables</button>}{esAdminGeneral&&<button className={vistaActiva==='lectores'?'active':''} onClick={()=>setVista('lectores')}><LockKeyhole size={17}/> Accesos</button>}</div>
+        <div className="ag-tabs" role="tablist" aria-label="Apartados">{esAdminGeneral&&<button className={vistaActiva==='panel'?'active':''} onClick={()=>setVista('panel')}><LayoutDashboard size={17}/> Inicio</button>}<button className={vistaActiva==='pagos'?'active':''} onClick={()=>setVista('pagos')}><Wallet size={17}/> Aportaciones</button>{esAdmin&&<button className={vistaActiva==='profesores'?'active':''} onClick={()=>setVista('profesores')}><GraduationCap size={17}/> Profesores</button>}{esAdmin&&<button className={vistaActiva==='gestion'?'active':''} onClick={()=>setVista('gestion')}><BookOpen size={17}/> Ciclos y salones</button>}{esAdminGeneral&&<button className={vistaActiva==='roles'?'active':''} onClick={()=>setVista('roles')}><ShieldCheck size={17}/> Responsables</button>}{esAdminGeneral&&<button className={vistaActiva==='lectores'?'active':''} onClick={()=>setVista('lectores')}><LockKeyhole size={17}/> Accesos</button>}</div>
         {vistaActiva==='panel'&&esAdminGeneral&&<>
           <section className="ag-general-hero" aria-label="Resumen general del ahorro de carrera">
             <div className="ag-general-label"><CircleDollarSign size={22}/> FONDO DE INGENIERÍA INDUSTRIAL</div>
@@ -822,7 +817,10 @@ export default function App() {
           {datos?.meta&&<Panel title="Historial de aportaciones" icon={History}><p className="ag-muted">Movimientos del nuevo ahorro. Los registros anteriores permanecen respaldados y no se suman.</p><div className="ag-timeline">{pagosHist.slice(0,100).map(p=><div className="ag-timeline-row" key={p.id}><span className={`ag-timeline-mark ${p.estado==='pagado'?'ok':'cancel'}`}>{p.estado==='pagado'?<Check size={16}/>:<X size={16}/>}</span><div><strong title={p.nombre||integrantes[p.estudianteId]?.nombre||''}>{nombreParaMostrar(integrantes[p.estudianteId]?.nombre||p.nombre||'Integrante',p.estudianteId,integrantes[p.estudianteId]?.formatoNombre)}</strong><small>Semana {p.semana} · {fechaLarga(p.creadoEn)} {p.estado==='anulado'?'· Anulación':''}{p.motivo?` · ${p.motivo}`:''}</small></div><b>{p.estado==='pagado'?'+':'−'}{pesos(p.monto)}</b></div>)}{!pagosHist.length&&<p className="ag-muted">Todavía no hay pagos semanales detallados para este salón.</p>}</div></Panel>}
         {esAdmin&&!periodo?.meta?.cerradoEn&&datos?.meta&&(periodoId!=='2026-2027-A'||ahorroNuevoActivo)&&<Panel title="Solicitar retiro de la caja" icon={ArrowDownRight}><form className="ag-simple-form" onSubmit={solicitarRetiro}><label>Importe en pesos<input type="number" min="1" step="1" value={retiro.monto} onChange={e=>setRetiro({...retiro,monto:e.target.value})} placeholder="Ej. 200" required/></label><label>Motivo<input value={retiro.motivo} onChange={e=>setRetiro({...retiro,motivo:e.target.value})} placeholder="¿Para qué se solicita?" minLength={6} required/></label><SmallButton type="submit" variant="primary" disabled={!!operacion}><Plus size={17}/> Publicar solicitud</SmallButton></form><p className="ag-muted">Solicitar no descuenta dinero. El saldo se actualiza cuando se aprueba la solicitud.</p></Panel>}
         <Panel title="Avisos de movimientos y retiros" icon={BellRing} action={<SmallButton onClick={permitirAvisos}><Bell size={16}/> Permitir avisos</SmallButton>}><p className="ag-muted">Solicitudes y retiros correspondientes a la carrera. Los avisos del dispositivo funcionan mientras la aplicación está abierta.</p>{!datos?.meta?<div className="ag-empty-small">Selecciona un salón configurado.</div>:<div className="ag-timeline">{avisosVisibles.map(r=><div key={r.id} className="ag-withdrawal"><div className="ag-withdrawal-head"><span className={`ag-status ag-status-${r.estado}`}>{r.estado==='solicitado'?'Solicitud de retiro':r.estado==='aprobado'?'Retiro aprobado':'Solicitud rechazada'}</span><strong>{pesos(r.monto)}</strong></div><p>{r.motivo}</p><small>{fechaLarga(r.creadoEn)} {r.respondidoEn?`· Resuelto ${fechaLarga(r.respondidoEn)}`:''}</small>{esAdminGeneral&&r.fondo==='carrera'&&!periodo?.meta?.cerradoEn&&r.estado==='solicitado'&&<div className="ag-withdrawal-buttons"><SmallButton disabled={!!operacion} onClick={()=>resolverRetiro(r,'aprobado')} variant="primary"><Check size={16}/> Aprobar y descontar</SmallButton><SmallButton disabled={!!operacion} onClick={()=>resolverRetiro(r,'rechazado')}>Rechazar</SmallButton></div>}</div>)}{!avisosVisibles.length&&<p className="ag-muted">No existen avisos de retiro para este salón.</p>}</div>}</Panel></>}
-        {vistaActiva==='lectores'&&esAdminGeneral&&<Panel title="Accesos de estudiantes" icon={ShieldCheck}><AccesosAdministracion usuario={usuario}/></Panel>}
+        {vistaActiva==='lectores'&&esAdminGeneral&&<>
+          <Panel title="Códigos privados para cada salón" icon={LockKeyhole}><CodigosSalonAdmin usuario={usuario}/></Panel>
+          <Panel title="Solicitudes anteriores con correo (cuentas ya registradas)" icon={ShieldCheck}><AccesosAdministracion usuario={usuario}/></Panel>
+        </>}
         {vistaActiva==='roles' && esAdminGeneral && <Panel title="Responsables de los salones" icon={ShieldCheck}>
           <p className="ag-muted">Crea responsables con su nombre y correo. Firebase les envía un mensaje para que establezcan su contraseña. No necesitas copiar identificadores ni entrar a Firebase. Los accesos avanzan automáticamente con su generación al cambiar de semestre.</p>
           <p className="ag-note">Máximo dos responsables por salón. Solo pueden registrar aportaciones y solicitar retiros de su salón. Las bajas de permisos no borran pagos ni alumnos.</p>
@@ -887,7 +885,7 @@ export default function App() {
       </main>}
     </div>
     {toast&&<div role="status" className="ag-toast">{toast}<button onClick={()=>setToast('')} aria-label="Cerrar"><X size={15}/></button></div>}
-    {loginOpen&&<div className="ag-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setLoginOpen(false);}}><div className="ag-modal" role="dialog" aria-modal="true" aria-label="Iniciar sesión"><button className="ag-modal-close" onClick={()=>setLoginOpen(false)}><X size={20}/></button><div className="ag-modal-mark"><LockKeyhole size={26}/></div><h2>Iniciar sesión</h2><p>Inicia sesión con el correo y la contraseña de tu cuenta. Los estudiantes necesitan autorización para consultar su salón.</p><form onSubmit={signIn}><label>Correo electrónico<input type="email" autoComplete="username" required value={email} onChange={e=>setEmail(e.target.value)}/></label><label>Contraseña<div className="ag-password"><input type={seePassword?'text':'password'} autoComplete="current-password" required value={password} onChange={e=>setPassword(e.target.value)}/><button type="button" onClick={()=>setSeePassword(!seePassword)}>{seePassword?<EyeOff size={18}/>:<Eye size={18}/>}</button></div></label>{loginError&&<div className="ag-error">{loginError}</div>}<SmallButton type="submit" variant="primary" disabled={loginBusy}><ShieldCheck size={18}/> {loginBusy?'Verificando…':'Iniciar sesión'}</SmallButton></form><button className="ag-link" type="button" onClick={resetPassword}>¿Olvidaste tu contraseña?</button>{usuario&&!tieneAcceso&&<button className="ag-link" type="button" onClick={()=>signOut(auth)}>Cerrar sesión actual</button>}</div></div>}
+    {loginOpen&&<div className="ag-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setLoginOpen(false);}}><div className="ag-modal" role="dialog" aria-modal="true" aria-label="Iniciar sesión"><button className="ag-modal-close" onClick={()=>setLoginOpen(false)}><X size={20}/></button><div className="ag-modal-mark"><LockKeyhole size={26}/></div><h2>Iniciar sesión</h2><p>Inicia sesión con el correo y la contraseña de tu cuenta. Para estudiantes basta el código de su salón. Este inicio de sesión es para administradores y responsables.</p><form onSubmit={signIn}><label>Correo electrónico<input type="email" autoComplete="username" required value={email} onChange={e=>setEmail(e.target.value)}/></label><label>Contraseña<div className="ag-password"><input type={seePassword?'text':'password'} autoComplete="current-password" required value={password} onChange={e=>setPassword(e.target.value)}/><button type="button" onClick={()=>setSeePassword(!seePassword)}>{seePassword?<EyeOff size={18}/>:<Eye size={18}/>}</button></div></label>{loginError&&<div className="ag-error">{loginError}</div>}<SmallButton type="submit" variant="primary" disabled={loginBusy}><ShieldCheck size={18}/> {loginBusy?'Verificando…':'Iniciar sesión'}</SmallButton></form><button className="ag-link" type="button" onClick={resetPassword}>¿Olvidaste tu contraseña?</button>{usuario&&!tieneAcceso&&<button className="ag-link" type="button" onClick={()=>signOut(auth)}>Cerrar sesión actual</button>}</div></div>}
     {modalInstalar&&<div className="ag-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setModalInstalar(false);}}><div className="ag-modal" role="dialog" aria-modal="true" aria-label="Instalar aplicación"><button className="ag-modal-close" onClick={()=>setModalInstalar(false)}><X size={20}/></button><img src="/icons/cerdito-192.png" alt="Cerdito" width="80" height="80"/><h2>Instalar AhorroGrupal</h2><p>Android: menú de Chrome → Instalar app. iPhone: Safari → Compartir → Añadir a inicio. Computadora: opción Instalar en Chrome o Edge.</p></div></div>}
   </div>;
 }
