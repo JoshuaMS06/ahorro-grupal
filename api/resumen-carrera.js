@@ -3,6 +3,7 @@ import {resumirFondos,generacionDeAula} from '../lib/fondos.js';
 import {corteActivo,resumirAhorroReiniciado} from '../lib/reinicioContable.js';
 import {informeVisibleSegunRol} from '../lib/informeRoles.js';
 import {isClassCode,isPeriodId} from '../lib/aulas.js';
+import {sesionCodigoValida} from '../lib/codigosSalon.js';
 
 export default async function handler(req,res){
   res.setHeader('Cache-Control','no-store');
@@ -13,10 +14,16 @@ export default async function handler(req,res){
   if(!/^Bearer \S+$/.test(req.headers.authorization||''))return res.status(401).json({error:'Inicia sesión.'});
   try {
     const usuario=await usuarioVerificado(req);
+    if(!usuario)return res.status(401).json({error:'Sesión no válida.'});
     const db=adminDatabase();
     const permiso=await permisoAdministrador(db,usuario.uid,periodo,salon);
     const lector=(await db.ref(`roles/lectores/${usuario.uid}`).get()).val();
-    const acceso=permiso||(lector?.periodo===periodo && lector?.salon===salon ? {tipo:'lector'} : null);
+    // El token firmado autoriza exclusivamente al salón y a la versión
+    // del código vigente; un cambio de código revoca también este endpoint.
+    const verCodigo=usuario.rolSalon==='consulta' && usuario.periodoCodigo===periodo && usuario.salonCodigo===salon;
+    const version=verCodigo?(await db.ref(`codigosSalon/${periodo}/${salon}/version`).get()).val():null;
+    const accesoCodigo=sesionCodigoValida(usuario,periodo,salon,version)?{tipo:'lector'}:null;
+    const acceso=permiso||(lector?.periodo===periodo && lector?.salon===salon ? {tipo:'lector'} : null)||accesoCodigo;
     if(!acceso)return res.status(403).json({error:'Sin permiso para ese salón.'});
     const [todas,periodosSnap]=await Promise.all([
       db.ref('aulas').get(),db.ref('periodos').get(),
