@@ -39,8 +39,24 @@ export default function CodigosSalonAdmin({usuario}){
       const d=await r.json().catch(()=>({}));
       if(!r.ok)throw Error(d.error||`HTTP ${r.status}`);
       setRevelado({periodo:s.periodo,salon:s.salon,codigo:d.codigo});
-      setMensaje('Código generado. Cópialo antes de cerrar: por seguridad no podrá recuperarse.');
+      setMensaje('PIN generado. Puedes consultarlo nuevamente con Ver PIN.');
       await cargar();
+    }catch(e){setError(e.message);}
+    finally{setOcupado('');}
+  };
+  const verCodigo=async(s)=>{
+    if(ocupado)return;
+    setOcupado(`${s.periodo}/${s.salon}`);setError('');setMensaje('');setRevelado(null);setCopiado(false);
+    try{
+      const token=await usuario.getIdToken();
+      const qs=new URLSearchParams({accion:'ver',periodo:s.periodo,salon:s.salon});
+      const r=await fetch(`/api/codigos-salon?${qs}`,{
+        headers:{Authorization:`Bearer ${token}`},cache:'no-store'
+      });
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok)throw Error(d.error||`HTTP ${r.status}`);
+      setRevelado({periodo:s.periodo,salon:s.salon,codigo:d.codigo});
+      setMensaje('PIN consultado. Puedes volver a verlo cuando lo necesites.');
     }catch(e){setError(e.message);}
     finally{setOcupado('');}
   };
@@ -57,8 +73,8 @@ export default function CodigosSalonAdmin({usuario}){
     {error&&<div className="ag-error" role="alert">{error}</div>}
     {mensaje&&<div className="ag-note">{mensaje}</div>}
     {revelado&&<div className="ag-code-reveal" role="status">
-      <div><KeyRound size={23}/><strong>Nuevo código del salón {revelado.salon}</strong></div>
-      <p>Compártelo solamente con los integrantes del salón {revelado.salon}. Lo mostramos una sola vez.</p>
+      <div><KeyRound size={23}/><strong>PIN del salón {revelado.salon}</strong></div>
+      <p>Compártelo solamente con integrantes del salón {revelado.salon}. Podrás volver a verlo desde este panel.</p>
       <code>{revelado.codigo}</code>
       <div className="ag-access-actions">
         <button type="button" className="ag-btn ag-btn-primary" onClick={copiar}>
@@ -75,11 +91,15 @@ export default function CodigosSalonAdmin({usuario}){
             <small>{s.periodo}</small>
             <span>{s.configurado?'Código activo · solo lectura':'Sin código: los estudiantes todavía no pueden entrar'}</span>
           </div>
+          <div className="ag-access-actions">
+          {s.configurado&&<button type="button" className="ag-btn" disabled={!!ocupado}
+            onClick={()=>verCodigo(s)}><KeyRound size={17}/> Ver PIN</button>}
           <button type="button" className="ag-btn ag-btn-primary" disabled={!!ocupado}
             onClick={()=>generar(s)}>
             {s.configurado?<RotateCcw size={17}/>:<KeyRound size={17}/>}
             {s.configurado?'Cambiar código':'Generar código'}
           </button>
+          </div>
         </article>)}
         {salones.length===0&&<p className="ag-muted">No hay salones activos en este momento.</p>}
       </div>}

@@ -1,20 +1,41 @@
 import {adminDatabase,usuarioVerificado} from '../lib/adminServidor.js';
 import {generarCodigoSalon,digestCodigoSalon} from '../lib/codigosSalon.js';
+import {cifrarPin,descifrarPin,recuperarPin4,clavePinServidor} from '../lib/pinProtegido.js';
 import {isClassCode,isPeriodId} from '../lib/aulas.js';
+import {proponerCambioPin} from '../lib/transaccionCodigo.js';
 
-// Solo el administrador general genera o rota códigos. Nunca se consultan en claro.
+// Solo el administrador general puede consultar, crear y cambiar PIN.
+// No se devuelven contraseñas en el listado: el PIN se pide individualmente.
 export default async function handler(req,res){
   res.setHeader('Cache-Control','no-store');
   if(!['GET','POST'].includes(req.method))return res.status(405).json({error:'Método no permitido.'});
-  if(!/^Bearer \S+$/.test(req.headers.authorization||''))return res.status(401).json({error:'Inicia sesión como administrador general.'});
+  if(!/^Bearer \S+$/.test(req.headers.authorization||''))
+    return res.status(401).json({error:'Inicia sesión como administrador general.'});
   try{
     const usuario=await usuarioVerificado(req);
     if(!usuario)return res.status(401).json({error:'Sesión no válida.'});
     const db=adminDatabase();
-    const admin=(await db.ref('roles/adminGeneralUid').get()).val();
-    if(admin!==usuario.uid)return res.status(403).json({error:'Solo el administrador general puede administrar códigos.'});
+    if((await db.ref('roles/adminGeneralUid').get()).val()!==usuario.uid)
+      return res.status(403).json({error:'Solo el administrador general puede administrar códigos.'});
 
     if(req.method==='GET'){
+      if(req.query?.accion==='ver'){
+        const {periodo,salon}=req.query||{};
+        if(!isPeriodId(periodo)||!isClassCode(salon))
+          return res.status(400).json({error:'Selecciona un salón válido.'});
+        const actual=(await db.ref(`codigosSalon/${periodo}/${salon}`).get()).val();
+        if(!actual?.digest)return res.status(404).json({error:'Este salón todavía no tiene PIN.'});
+        let codigo=null;
+        if(actual.pinCifrado){
+          try{codigo=descifrarPin(actual.pinCifrado,periodo,salon,clavePinServidor());}
+          catch{/* recuperación de versiones anteriores */}
+        }
+        if(!codigo || digestCodigoSalon(codigo)!==actual.digest)codigo=recuperarPin4(actual.digest);
+        if(!codigo)return res.status(409).json({
+          error:'El código anterior es demasiado largo para recuperarlo. Utiliza Cambiar código para establecer un PIN de 4 dígitos.'
+        });
+        return res.status(200).json({periodo,salon,codigo,version:actual.version});
+      }
       const [periodosSnap,codigosSnap]=await Promise.all([
         db.ref('periodos').get(),db.ref('codigosSalon').get()
       ]);
@@ -30,37 +51,36 @@ export default async function handler(req,res){
     const {periodo,salon,accion}=req.body||{};
     if(!isPeriodId(periodo)||!isClassCode(salon)||!['crear','rotar'].includes(accion))
       return res.status(400).json({error:'Datos de salón inválidos.'});
-    const periodoSnap=await db.ref(`periodos/${periodo}`).get();
-    const p=periodoSnap.val();
-    if(!p?.salones?.[salon] || p?.meta?.cerradoEn)
+    const [periodoSnap,codigosSnap]=await Promise.all([
+      db.ref(`periodos/${periodo}`).get(),db.ref('codigosSalon').get()
+    ]);
+    const p=periodoSnap.val(),existentes=codigosSnap.val()||{};
+    if(!p?.salones?.[salon]||p?.meta?.cerradoEn)
       return res.status(409).json({error:'El salón no existe o el ciclo está cerrado.'});
-    // Impedir PIN idénticos entre salones que tengan un código activo.
-    const existentes=(await db.ref('codigosSalon').get()).val()||{};
+    const configRef=db.ref(`codigosSalon/${periodo}/${salon}`);
+    const anterior=(await configRef.get()).val();
+    if(accion==='rotar'&&!anterior?.digest)
+      return res.status(409).json({error:'No hay código para cambiar. Actualiza y pulsa Generar código.'});
+    if(accion==='crear'&&anterior?.digest)
+      return res.status(409).json({error:'El salón ya tiene un código. Actualiza el panel para consultarlo.'});
+
     const usados=new Set(Object.values(existentes).flatMap(ciclo=>
       Object.values(ciclo||{}).map(item=>item?.digest).filter(Boolean)));
-    if(accion==='rotar'){
-      const anterior=existentes?.[periodo]?.[salon]?.digest;
-      if(anterior)usados.add(anterior); // Nunca reutilizar el PIN anterior al rotarlo.
-    }
     let codigo='',digest='';
-    for(let intento=0;intento<50;intento++){
-      const candidato=generarCodigoSalon();
-      const hash=digestCodigoSalon(candidato);
+    for(let intento=0;intento<80;intento++){
+      const candidato=generarCodigoSalon(),hash=digestCodigoSalon(candidato);
       if(!usados.has(hash)){codigo=candidato;digest=hash;break;}
     }
-    if(!codigo)return res.status(503).json({error:'No fue posible generar un PIN único. Vuelve a intentarlo.'});
-    const ahora=Date.now();
-    const configRef=db.ref(`codigosSalon/${periodo}/${salon}`);
-    const resultado=await configRef.transaction(actual=>{
-      if(accion==='crear' && actual)return;
-      if(accion==='rotar' && !actual)return;
-      const version=Number.isSafeInteger(actual?.version)&&actual.version>0?actual.version+1:1;
-      return {digest,version,actualizadoEn:ahora,actualizadoPor:usuario.uid};
-    },undefined,false);
+    if(!codigo)return res.status(503).json({error:'No fue posible generar un PIN distinto. Inténtalo nuevamente.'});
+    const ahora=Date.now(),version=(Number.isSafeInteger(anterior?.version)?anterior.version:0)+1;
+    const pinCifrado=cifrarPin(codigo,periodo,salon,clavePinServidor());
+    const propuesta={digest,pinCifrado,version,actualizadoEn:ahora,actualizadoPor:usuario.uid};
+    const resultado=await configRef.transaction(
+      actual=>proponerCambioPin(actual,anterior,accion,propuesta),undefined,false
+    );
     if(!resultado.committed)
-      return res.status(409).json({error:'La configuración cambió. Actualiza antes de generar otro código.'});
-    // El código solo se revela en esta respuesta; no puede recuperarse después.
-    return res.status(200).json({ok:true,periodo,salon,codigo,version:resultado.snapshot.val().version});
+      return res.status(409).json({error:'El código cambió en otra sesión. Pulsa Actualizar salones.'});
+    return res.status(200).json({ok:true,periodo,salon,codigo,version});
   }catch(error){
     console.error('Códigos de salón:',error?.code||error?.message||'error');
     return res.status(500).json({error:'No se pudieron administrar los códigos de salón.'});
