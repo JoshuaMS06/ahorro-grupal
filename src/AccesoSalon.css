@@ -61,3 +61,6 @@
 .ag-code-reveal p{margin:0;color:#eadcf6;font-size:13px}
 .ag-code-reveal code{display:block;max-width:100%;overflow-wrap:anywhere;user-select:all;background:#1b1228;border:1px solid #916abc;padding:15px;border-radius:11px;color:#f4d8ff;font-size:clamp(16px,2.5vw,23px);font-weight:780;letter-spacing:.075em}
 @media(max-width:540px){.ag-access-code-submit{align-self:stretch;justify-content:center}.ag-code-card>.ag-btn{width:100%;justify-content:center}}
+
+/* Campo compacto para el PIN nuevo de cuatro dígitos. */
+.ag-access-code-label input{max-width:240px;text-align:center;letter-spacing:.25em}
