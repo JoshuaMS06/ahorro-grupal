@@ -5,7 +5,7 @@ import {primerLunesDesdeFecha} from '../lib/semestres.js';
 
 const origen='2026-2027-A';
 function ejemplo(){return {
- roles:{adminGeneralUid:'general',porUsuario:{responsable:{periodo:origen,salon:'507',plaza:'1'},fin:{periodo:origen,salon:'1007',plaza:'2'}},responsables:{[origen]:{'507':{'1':'responsable'},'1007':{'2':'fin'}}}},
+ roles:{adminGeneralUid:'general',lectores:{lector507:{periodo:origen,salon:'507',aprobadoEn:123},lectorFin:{periodo:origen,salon:'1007',aprobadoEn:124}},porUsuario:{responsable:{periodo:origen,salon:'507',plaza:'1'},fin:{periodo:origen,salon:'1007',plaza:'2'}},responsables:{[origen]:{'507':{'1':'responsable'},'1007':{'2':'fin'}}}},
  periodos:{[origen]:{meta:{nombre:'Actual',lunesBase:'2026-10-19',semanaBase:4,creadoEn:1,reinicioContable:{version:1,semanaInicio:5,activadoEn:1}},salones:{'507':{nombre:'507'},'107':{nombre:'107'},'1007':{nombre:'1007'}}}},
  ahorro:{integrantes:{'Uno':{pagos:3}}},
  aulas:{[origen]:{
@@ -31,6 +31,9 @@ test('el botón registra fecha efectiva, no pide lunes ni programa cron',()=>{
  assert.equal(detalles.salonesArchivados,1);
  assert.equal(raiz.roles.porUsuario.responsable.salon,'607');
  assert.equal(raiz.roles.porUsuario.fin,undefined);
+ assert.equal(raiz.roles.lectores.lector507.salon,'607');
+ assert.equal(raiz.roles.lectores.lector507.periodo,'2026-2027-B');
+ assert.equal(raiz.roles.lectores.lectorFin,undefined);
  assert.deepEqual(datos,antes);
 });
 test('se toma el lunes de la semana si el botón se pulsa un lunes',()=>{
