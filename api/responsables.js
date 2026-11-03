@@ -1,10 +1,12 @@
 import {adminAuth,adminDatabase,usuarioVerificado} from '../lib/adminServidor.js';
 import {verificarDatosResponsable,salonDisponibleResponsable,proponerTransaccionRoles} from '../lib/gestionarResponsables.js';
+import {responsableAutorizadoParaEnlace} from '../lib/invitacionResponsable.js';
 
 // La asignación de responsables no reemplaza ni modifica datos financieros.
 // Solamente modifica /roles, de forma atómica.
 export default async function handler(req,res){
-  res.setHeader('Cache-Control','no-store');
+  res.setHeader('Cache-Control','no-store, private');
+  res.setHeader('Pragma','no-cache');
   if(!['GET','POST'].includes(req.method))return res.status(405).json({error:'Método no permitido.'});
   if(!/^Bearer \S+$/.test(req.headers.authorization||''))return res.status(401).json({error:'Inicia sesión como administrador general.'});
   try{
@@ -32,6 +34,26 @@ export default async function handler(req,res){
       return res.status(200).json({perfiles});
     }
     const {accion,periodo,salon,plaza,nombre,correo}=req.body||{};
+    if(accion==='enlace'){
+      try{
+        // Se acepta únicamente para un UID ya asignado a una plaza real.
+        const roles=(await db.ref('roles').get()).val();
+        const uid=responsableAutorizadoParaEnlace(roles,{adminUid:usuario.uid,periodo,salon,plaza});
+        const cuenta=await auth.getUser(uid);
+        if(!cuenta?.email||cuenta.disabled)
+          return res.status(409).json({error:'La cuenta no está activa o no tiene correo. Revisa el registro de responsables.'});
+        const enlace=await auth.generatePasswordResetLink(cuenta.email);
+        return res.status(200).json({correo:cuenta.email,nombre:cuenta.displayName||'',enlace});
+      }catch(error){
+        if(error?.code==='auth/operation-not-allowed')
+          return res.status(409).json({error:'Activa Correo/Contraseña en Firebase Authentication para configurar las contraseñas.'});
+        if(error?.code?.startsWith('auth/')){
+          console.error('Enlace de responsable:',error.code);
+          return res.status(409).json({error:'Firebase no pudo crear el enlace. Revisa el método de acceso Correo/Contraseña.'});
+        }
+        return res.status(403).json({error:error?.message||'No es posible generar el enlace de esta plaza.'});
+      }
+    }
     if(!['asignar','revocar'].includes(accion))return res.status(400).json({error:'Acción inválida.'});
     try{verificarDatosResponsable({periodo,salon,plaza,...(accion==='asignar'?{nombre,correo}:{})});}
     catch(error){return res.status(400).json({error:error.message});}
