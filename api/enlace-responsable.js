@@ -21,10 +21,6 @@ export default async function handler(req,res){
     const cuenta=await auth.getUser(uid);
     if(!cuenta?.email||cuenta.disabled)
       return res.status(409).json({error:'La cuenta no está activa o no tiene correo. Revisa el registro de responsables.'});
-    if(cuenta.emailVerified!==true){
-      // Establecer contraseña mediante enlace no implica marcar email verificado
-      // por servidor, porque la propiedad solo debe actualizarse con evidencia.
-    }
     const enlace=await auth.generatePasswordResetLink(cuenta.email);
     return res.status(200).json({correo:cuenta.email,nombre:cuenta.displayName||'',enlace});
   }catch(error){
