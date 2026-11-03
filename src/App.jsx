@@ -67,7 +67,7 @@ function PlazaResponsable({periodo,salon,plaza,persona,ocupada,busy,guardar,reen
     <strong>Responsable {plaza}</strong>
     {ocupada ? <>
       <div className="ag-role-persona"><b>{persona?.nombre||'Responsable asignado'}</b><small>{persona?.correo||'Consultando la cuenta…'}</small>{persona?.activo===false&&<small>Cuenta deshabilitada o no encontrada</small>}</div>
-      <SmallButton disabled={busy||!persona?.correo} onClick={()=>reenviar(persona.correo)}>Enviar acceso de nuevo</SmallButton>
+      <SmallButton disabled={busy} onClick={()=>reenviar({periodo,salon,plaza})}>Preparar enlace de contraseña</SmallButton>
       <SmallButton disabled={busy} onClick={()=>guardar({accion:'revocar',periodo,salon,plaza})}>Revocar acceso</SmallButton>
     </> : <form className="ag-role-invite" onSubmit={e=>{e.preventDefault();guardar({accion:'asignar',periodo,salon,plaza,nombre,correo});}}>
       <label>Nombre completo<input value={nombre} onChange={e=>setNombre(e.target.value)} autoComplete="name" placeholder="Nombre y apellidos" required minLength={3} maxLength={100}/></label>
@@ -93,6 +93,7 @@ export default function App() {
   const [responsables,setResponsables]=useState({});
   const [perfilesResponsables,setPerfilesResponsables]=useState({});
   const [errorResponsables,setErrorResponsables]=useState('');
+  const [enlaceResponsable,setEnlaceResponsable]=useState(null);
   const [loginOpen,setLoginOpen]=useState(false);
   const [email,setEmail]=useState('');
   const [password,setPassword]=useState('');
@@ -680,32 +681,66 @@ export default function App() {
       return r.committed?'Ciclo archivado. Los historiales y saldos permanecen disponibles.':'El ciclo ya estaba cerrado.';
     });
   };
+  const obtenerEnlaceResponsable=async({periodo,salon,plaza})=>{
+    const token=await usuario.getIdToken();
+    const respuesta=await fetch('/api/enlace-responsable',{
+      method:'POST',cache:'no-store',
+      headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+      body:JSON.stringify({periodo,salon,plaza})
+    });
+    const body=await respuesta.json().catch(()=>({}));
+    if(!respuesta.ok)throw Error(body.error||`Error HTTP ${respuesta.status}`);
+    if(typeof body.enlace!=='string'||!body.enlace.startsWith('https://'))
+      throw Error('El servidor no generó un enlace válido.');
+    setEnlaceResponsable({correo:body.correo,nombre:body.nombre,periodo,salon,plaza,enlace:body.enlace});
+    return body;
+  };
   const guardarResponsable=async(datosRol)=>{
     if(!esAdminGeneral||!usuario)return;
     const {accion,periodo:p,salon:s,plaza,correo}=datosRol;
-    if(!window.confirm(accion==='revocar'?`¿Revocar el acceso del responsable ${plaza} del salón ${s}? Sus pagos permanecerán intactos.`:`¿Crear o asignar la cuenta ${correo} como responsable ${plaza} del salón ${s}?`))return;
+    if(!window.confirm(accion==='revocar'
+      ?`¿Revocar el acceso del responsable ${plaza} del salón ${s}? Sus pagos permanecerán intactos.`
+      :`¿Crear o asignar la cuenta ${correo} como responsable ${plaza} del salón ${s}?`))return;
     await withOperation(`responsable:${p}:${s}:${plaza}`,async()=>{
       const token=await usuario.getIdToken();
       const respuesta=await fetch('/api/responsables',{
-        method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(datosRol)
+        method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+        body:JSON.stringify(datosRol)
       });
       const body=await respuesta.json().catch(()=>({}));
       if(!respuesta.ok)throw Error(body.error||`Error HTTP ${respuesta.status}`);
       if(accion==='revocar')return 'Acceso revocado. Los estudiantes y pagos permanecen intactos.';
-      if(!body.nueva)return `Responsable asignado: ${body.correo}. La cuenta existente utiliza su contraseña actual.`;
       try{
-        await sendPasswordResetEmail(auth,body.correo);
-        return usarEmuladores ? `Cuenta ficticia creada: ${body.correo}. El enlace para establecer contraseña aparece en la terminal del emulador Auth; no se envió correo real.` : `Responsable creado: ${body.correo}. Firebase envió un correo para establecer su contraseña.`;
+        await obtenerEnlaceResponsable({periodo:p,salon:s,plaza});
+        return `Responsable asignado al salón ${s}. Copia el enlace para que establezca su propia contraseña.`;
       }catch(error){
-        return `Cuenta ${body.correo} creada y autorizada, PERO no pudo enviarse el correo de acceso (${avisoError(error)}). Usa «Enviar acceso de nuevo».`;
+        return `Responsable asignado: ${body.correo}, pero falta configurar su contraseña (${avisoError(error)}). Pulsa «Preparar enlace de contraseña» en esa plaza.`;
       }
     });
   };
-  const reenviarAcceso=async(correo)=>{
-    if(!esAdminGeneral||!correo||!window.confirm(`¿Enviar un correo para establecer o recuperar contraseña a ${correo}?`))return;
-    await withOperation('reenvio-acceso',async()=>{
-      await sendPasswordResetEmail(auth,correo);
-      return usarEmuladores ? 'Entorno de prueba: revisa la terminal del emulador Auth; no se envió correo real.' : 'Firebase envió las instrucciones de acceso al correo del responsable.';
+  const reenviarAcceso=async({periodo,salon,plaza})=>{
+    if(!esAdminGeneral||!usuario)return;
+    await withOperation('generar-enlace',async()=>{
+      await obtenerEnlaceResponsable({periodo,salon,plaza});
+      return 'Enlace de contraseña listo. Cópialo y compártelo de forma privada con el responsable.';
+    });
+  };
+  const copiarInvitacion=async()=>{
+    if(!enlaceResponsable)return;
+    const {nombre,correo,salon,enlace}=enlaceResponsable;
+    const mensaje=`Hola${nombre?` ${nombre}`:''}. Ya tienes acceso como responsable del salón ${salon} en Ahorro Grupal. Establece TU PROPIA contraseña con este enlace privado de Firebase:\n\n${enlace}\n\nDespués entra a Ahorro Grupal con el correo ${correo} y la contraseña que elegiste. No compartas este enlace; es personal y puede vencer.`;
+    try{
+      await navigator.clipboard.writeText(mensaje);
+      setToast('Invitación copiada. Envíala únicamente al responsable por un canal privado.');
+    }catch{
+      setToast('No se pudo copiar automáticamente. Selecciona y copia el enlace del cuadro.');
+    }
+  };
+  const enviarCorreoAcceso=async()=>{
+    if(!enlaceResponsable)return;
+    await withOperation('correo-invitacion',async()=>{
+      await sendPasswordResetEmail(auth,enlaceResponsable.correo);
+      return 'Firebase aceptó la solicitud del correo para configurar la contraseña. Pide al responsable revisar bandeja y spam.';
     });
   };
   const permitirAvisos=async()=>{
@@ -890,6 +925,21 @@ export default function App() {
       </main>}
     </div>
     {toast&&<div role="status" className="ag-toast">{toast}<button onClick={()=>setToast('')} aria-label="Cerrar"><X size={15}/></button></div>}
+    {enlaceResponsable&&<div className="ag-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setEnlaceResponsable(null);}}>
+      <div className="ag-modal" role="dialog" aria-modal="true" aria-label="Invitación al responsable de salón">
+        <button type="button" className="ag-modal-close" onClick={()=>setEnlaceResponsable(null)} aria-label="Cerrar invitación"><X size={20}/></button>
+        <div className="ag-modal-mark"><ShieldCheck size={26}/></div>
+        <h2>Enlace de acceso · salón {enlaceResponsable.salon}</h2>
+        <p><strong>{enlaceResponsable.correo}</strong> debe crear su propia contraseña desde el enlace. No existe una contraseña predeterminada.</p>
+        <label>Enlace privado para establecer contraseña
+          <textarea value={enlaceResponsable.enlace} rows={4} readOnly onFocus={e=>e.target.select()} className="ag-invitation-url"/>
+        </label>
+        <p className="ag-muted">Comparte este enlace únicamente con el responsable. Es temporal y permite configurar su contraseña; no lo publiques en grupos.</p>
+        <SmallButton variant="primary" onClick={copiarInvitacion}><Check size={17}/> Copiar mensaje e invitación</SmallButton>
+        <SmallButton disabled={!!operacion} onClick={enviarCorreoAcceso}><Bell size={17}/> Enviar instrucciones al correo con Firebase</SmallButton>
+        <SmallButton onClick={()=>setEnlaceResponsable(null)}>Cerrar</SmallButton>
+      </div>
+    </div>}
     {loginOpen&&<div className="ag-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setLoginOpen(false);}}><div className="ag-modal" role="dialog" aria-modal="true" aria-label="Iniciar sesión"><button className="ag-modal-close" onClick={()=>setLoginOpen(false)}><X size={20}/></button><div className="ag-modal-mark"><LockKeyhole size={26}/></div><h2>Iniciar sesión</h2><p>Inicia sesión con el correo y la contraseña de tu cuenta. Para estudiantes basta el código de su salón. Este inicio de sesión es para administradores y responsables.</p><form onSubmit={signIn}><label>Correo electrónico<input type="email" autoComplete="username" required value={email} onChange={e=>setEmail(e.target.value)}/></label><label>Contraseña<div className="ag-password"><input type={seePassword?'text':'password'} autoComplete="current-password" required value={password} onChange={e=>setPassword(e.target.value)}/><button type="button" onClick={()=>setSeePassword(!seePassword)}>{seePassword?<EyeOff size={18}/>:<Eye size={18}/>}</button></div></label>{loginError&&<div className="ag-error">{loginError}</div>}<SmallButton type="submit" variant="primary" disabled={loginBusy}><ShieldCheck size={18}/> {loginBusy?'Verificando…':'Iniciar sesión'}</SmallButton></form><button className="ag-link" type="button" onClick={resetPassword}>¿Olvidaste tu contraseña?</button>{usuario&&!tieneAcceso&&<button className="ag-link" type="button" onClick={()=>signOut(auth)}>Cerrar sesión actual</button>}</div></div>}
     {modalInstalar&&<div className="ag-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setModalInstalar(false);}}><div className="ag-modal" role="dialog" aria-modal="true" aria-label="Instalar aplicación"><button className="ag-modal-close" onClick={()=>setModalInstalar(false)}><X size={20}/></button><img src="/icons/cerdito-192.png" alt="Cerdito" width="80" height="80"/><h2>Instalar AhorroGrupal</h2><p>Android: menú de Chrome → Instalar app. iPhone: Safari → Compartir → Añadir a inicio. Computadora: opción Instalar en Chrome o Edge.</p></div></div>}
   </div>;

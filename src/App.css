@@ -51,3 +51,11 @@
 .ag-prof-details small{color:#b9a5c9;font-size:11px;line-height:1.35}
 .ag-prof-saving .ag-pay-actions{margin-left:auto}
 @media(max-width:590px){.ag-week-select-docentes{width:100%}.ag-week-select>select{max-width:135px}.ag-prof-saving{gap:9px}.ag-prof-details{min-width:145px}}
+
+/* Invitación de responsables: permite copiar el enlace de forma clara en móvil. */
+.ag-modal .ag-invitation-url{box-sizing:border-box;width:100%;max-width:100%;min-height:96px;
+  resize:vertical;overflow-wrap:anywhere;word-break:break-all;padding:12px;
+  background:#160e27;color:#f1e6ff;border:1px solid #8460bb;border-radius:10px;font-size:12px;line-height:1.5}
+.ag-modal label:has(.ag-invitation-url){display:flex;flex-direction:column;gap:8px;margin:12px 0;
+  color:#e6d7f7;font-size:13px}
+.ag-modal:has(.ag-invitation-url) .ag-btn{width:100%;justify-content:center;display:flex;gap:8px;margin:8px 0}
