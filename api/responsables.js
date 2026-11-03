@@ -1,7 +1,8 @@
 import {adminAuth,adminDatabase,usuarioVerificado} from '../lib/adminServidor.js';
-import {verificarDatosResponsable,modificarPlazaRaiz} from '../lib/gestionarResponsables.js';
+import {verificarDatosResponsable,salonDisponibleResponsable,modificarPlazaRoles} from '../lib/gestionarResponsables.js';
 
-// Solo el administrador general. Nunca se entregan UIDs para introducir a mano.
+// La asignación de responsables no reemplaza ni modifica datos financieros.
+// Solamente modifica /roles, de forma atómica.
 export default async function handler(req,res){
   res.setHeader('Cache-Control','no-store');
   if(!['GET','POST'].includes(req.method))return res.status(405).json({error:'Método no permitido.'});
@@ -9,8 +10,7 @@ export default async function handler(req,res){
   try{
     const usuario=await usuarioVerificado(req);
     if(!usuario)return res.status(401).json({error:'Sesión no válida.'});
-    const db=adminDatabase();
-    const auth=adminAuth();
+    const db=adminDatabase(),auth=adminAuth();
     if((await db.ref('roles/adminGeneralUid').get()).val()!==usuario.uid)
       return res.status(403).json({error:'Solo el administrador general puede administrar responsables.'});
     if(req.method==='GET'){
@@ -35,15 +35,25 @@ export default async function handler(req,res){
     if(!['asignar','revocar'].includes(accion))return res.status(400).json({error:'Acción inválida.'});
     try{verificarDatosResponsable({periodo,salon,plaza,...(accion==='asignar'?{nombre,correo}:{})});}
     catch(error){return res.status(400).json({error:error.message});}
-    const actual=(await db.ref('/').get()).val();
-    if(!actual?.periodos?.[periodo]?.salones?.[salon]||actual.periodos[periodo].meta?.cerradoEn)
-      return res.status(409).json({error:'Salón inexistente o semestre cerrado.'});
+
+    // Una clase puede existir visualmente y aun así estar cerrada: diferenciar
+    // claramente ambos estados antes de crear una cuenta en Firebase Auth.
+    const [periodoSnap,salonSnap,rolesSnap]=await Promise.all([
+      db.ref(`periodos/${periodo}/meta`).get(),
+      db.ref(`periodos/${periodo}/salones/${salon}`).get(),
+      db.ref('roles').get()
+    ]);
+    try{salonDisponibleResponsable(periodoSnap.val(),salonSnap.val());}
+    catch(error){return res.status(409).json({error:error.message});}
+    const rolesInicial=rolesSnap.val();
+    if(rolesInicial?.adminGeneralUid!==usuario.uid)
+      return res.status(403).json({error:'La cuenta ya no tiene permisos administrativos.'});
+    if(accion==='asignar' && rolesInicial?.responsables?.[periodo]?.[salon]?.[plaza])
+      return res.status(409).json({error:'Esta plaza ya tiene responsable. Revoca primero el acceso anterior.'});
+
+    let persona,nueva=false;
     if(accion==='asignar'){
       const normalizado=correo.trim().toLowerCase();
-      // No creamos cuentas si la plaza ya está ocupada.
-      const ocupado=actual.roles?.responsables?.[periodo]?.[salon]?.[plaza];
-      if(ocupado)return res.status(409).json({error:'Esta plaza ya tiene responsable. Revoca primero el acceso anterior.'});
-      let persona,nueva=false;
       try{persona=await auth.getUserByEmail(normalizado);}
       catch(error){
         if(error?.code!=='auth/user-not-found')throw error;
@@ -51,22 +61,25 @@ export default async function handler(req,res){
         nueva=true;
       }
       if(persona.disabled)return res.status(409).json({error:'Esta cuenta está deshabilitada.'});
-      if(persona.uid===usuario.uid)return res.status(409).json({error:'El administrador general no puede ser responsable.'});
-      let motivo='La plaza ha cambiado. Actualiza la pantalla.';
-      const r=await db.ref('/').transaction(raiz=>{
-        try{return modificarPlazaRaiz(raiz,{accion,periodo,salon,plaza,uid:persona.uid,adminUid:usuario.uid});}
-        catch(error){motivo=error.message;return;}
-      },undefined,false);
-      if(!r.committed)return res.status(409).json({error:motivo});
-      return res.status(200).json({ok:true,nueva,nombre:persona.displayName||nombre.trim(),correo:persona.email||normalizado});
+      if(persona.uid===usuario.uid)return res.status(409).json({
+        error:'Ya utilizas esa cuenta como administrador general. Puedes administrar el 507 y los demás salones sin ocupar una plaza. Para invitar un responsable del 507, utiliza el correo de otra persona.'
+      });
     }
-    let motivo='La plaza ha cambiado. Actualiza la pantalla.';
-    const r=await db.ref('/').transaction(raiz=>{
-      try{return modificarPlazaRaiz(raiz,{accion,periodo,salon,plaza,adminUid:usuario.uid});}
-      catch(error){motivo=error.message;return;}
+
+    let motivo='La plaza fue modificada desde otra sesión. Actualiza y vuelve a intentarlo.';
+    const args={accion,periodo,salon,plaza,uid:persona?.uid,adminUid:usuario.uid};
+    const rolesRef=db.ref('roles');
+    const resultado=await rolesRef.transaction(actual=>{
+      try{
+        // El SDK de Admin puede invocar primero el callback con null como
+        // estado provisional. Usar la copia de roles obtenida del servidor
+        // para la propuesta inicial, después recomprobar cada actualización.
+        return modificarPlazaRoles(actual===null?rolesInicial:actual,args);
+      }catch(error){motivo=error.message;return;}
     },undefined,false);
-    if(!r.committed)return res.status(409).json({error:motivo});
-    return res.status(200).json({ok:true,revocado:true});
+    if(!resultado.committed)return res.status(409).json({error:motivo});
+    if(accion==='revocar')return res.status(200).json({ok:true,revocado:true});
+    return res.status(200).json({ok:true,nueva,nombre:persona.displayName||nombre.trim(),correo:persona.email||correo.trim().toLowerCase()});
   }catch(error){
     console.error('Responsables:',error?.code||error?.message||'error');
     return res.status(500).json({error:'No se pudo gestionar el responsable. Consulta los registros del servidor.'});
