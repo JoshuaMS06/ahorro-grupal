@@ -1,5 +1,5 @@
 import {adminAuth,adminDatabase,usuarioVerificado} from '../lib/adminServidor.js';
-import {verificarDatosResponsable,salonDisponibleResponsable,modificarPlazaRoles} from '../lib/gestionarResponsables.js';
+import {verificarDatosResponsable,salonDisponibleResponsable,proponerTransaccionRoles} from '../lib/gestionarResponsables.js';
 
 // La asignación de responsables no reemplaza ni modifica datos financieros.
 // Solamente modifica /roles, de forma atómica.
@@ -74,7 +74,7 @@ export default async function handler(req,res){
         // El SDK de Admin puede invocar primero el callback con null como
         // estado provisional. Usar la copia de roles obtenida del servidor
         // para la propuesta inicial, después recomprobar cada actualización.
-        return modificarPlazaRoles(actual===null?rolesInicial:actual,args);
+        return proponerTransaccionRoles(actual,rolesInicial,args);
       }catch(error){motivo=error.message;return;}
     },undefined,false);
     if(!resultado.committed)return res.status(409).json({error:motivo});
