@@ -4,6 +4,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {initializeTestEnvironment,assertFails,assertSucceeds} from '@firebase/rules-unit-testing';
 import {getDatabase,ref,get,set} from 'firebase/database';
+import {initializeApp as iniciarServidor,deleteApp as cerrarServidor} from 'firebase-admin/app';
+import {getDatabase as servidorDb} from 'firebase-admin/database';
+import {proponerTransaccionRoles} from '../lib/gestionarResponsables.js';
 const env = await initializeTestEnvironment({projectId:'demo-ahorro-grupal',database:{host:'127.0.0.1',port:9000,rules:readFileSync(new URL('../firebase-database.rules.json',import.meta.url),'utf8')}});
 const location = '/aulas/2026-2027-A/107';
 try {
@@ -268,6 +271,41 @@ try {
     await assertFails(get(ref(codigo507,'aulas/2026-2027-A/507')));
     await assertFails(get(ref(codigo507,'periodos/2026-2027-A/salones/507')));
     await assertSucceeds(get(ref(general,'aulas/2026-2027-A/507')));
+  });
+  await test('Firebase Admin asigna responsable del 507 sin tocar pagos ni romper roles existentes',async()=>{
+    await env.withSecurityRulesDisabled(async ctx=>{
+      await set(ref(ctx.database(),'roles'),{
+        adminGeneralUid:'adminGeneral',
+        porUsuario:{resp107:{periodo:'2026-2027-A',salon:'107',plaza:'1'}},
+        responsables:{'2026-2027-A':{'107':{'1':'resp107'}}}
+      });
+      await set(ref(ctx.database(),'aulas/2026-2027-A/507'),{
+        meta:{nombre:'Salón 507',cuotaSemanal:20},
+        integrantes:{e5:{nombre:'Alumno de prueba'}},
+        pagosReinicio:{e5_s0005:{estudianteId:'e5',semana:5,monto:20,estado:'pagado',fondoGrupo:10,fondoCarrera:10,creadoEn:200}}
+      });
+    });
+    const app=iniciarServidor({
+      projectId:'demo-ahorro-grupal',
+      databaseURL:'https://demo-ahorro-grupal-default-rtdb.firebaseio.com'
+    },'servidor-pruebas-responsables');
+    try{
+      const db=servidorDb(app),antes=(await db.ref('aulas').get()).val();
+      const rolesInicial=(await db.ref('roles').get()).val();
+      let callbacks=0;
+      const result=await db.ref('roles').transaction(actual=>{
+        callbacks++;
+        return proponerTransaccionRoles(actual,rolesInicial,{
+          accion:'asignar',periodo:'2026-2027-A',salon:'507',
+          plaza:'1',uid:'responsableReal507',adminUid:'adminGeneral'
+        });
+      },undefined,false);
+      assert.equal(result.committed,true);
+      assert.ok(callbacks>0);
+      assert.equal((await db.ref('roles/responsables/2026-2027-A/507/1').get()).val(),'responsableReal507');
+      assert.equal((await db.ref('roles/responsables/2026-2027-A/107/1').get()).val(),'resp107');
+      assert.deepEqual((await db.ref('aulas').get()).val(),antes);
+    }finally{await cerrarServidor(app);}
   });
 } finally {
   await env.cleanup();
