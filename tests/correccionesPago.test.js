@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {corregirRegistroPago} from '../lib/correccionesPago.js';
+import {resumirAhorroReiniciado} from '../lib/reinicioContable.js';
 const inicial={estudianteId:'e3',nombre:'Alumno',semana:5,monto:20,fondoGrupo:10,fondoCarrera:10,
  estado:'pagado',creadoEn:200,registradoPor:'responsable1',
  historial:{ev1:{tipo:'registro',fecha:200,uid:'responsable1'}}};
@@ -46,4 +47,29 @@ test('pagos anteriores conservan fondos en cero',()=>{
  assert.equal(corregido.estado,'anulado');
  assert.equal(corregido.fondoGrupo,0);
  assert.equal(corregido.fondoCarrera,0);
+});
+
+test('al anular o restaurar $20 del 507, cambian ambos fondos $10 sin modificar otros salones',()=>{
+ const periodos={'2026-2027-A':{meta:{reinicioContable:{version:1,semanaInicio:5,activadoEn:100}}}};
+ const aulas={'2026-2027-A':{
+   '507':{meta:{cuotaSemanal:20},pagosReinicio:{e3_s0005:structuredClone(inicial)}},
+   '107':{meta:{cuotaSemanal:10},pagosReinicio:{e1_s0005:{
+     estudianteId:'e1',semana:5,monto:10,fondoGrupo:0,fondoCarrera:10,
+     estado:'pagado',creadoEn:250,registradoPor:'responsable107',historial:{e0:{tipo:'registro',fecha:250,uid:'responsable107'}}
+   }}}
+ }};
+ const antes=resumirAhorroReiniciado(aulas,periodos);
+ assert.equal(antes.totalCarrera,20);
+ assert.equal(antes.totalAhorro507,10);
+ aulas['2026-2027-A']['507'].pagosReinicio.e3_s0005=corregirRegistroPago(inicial,args);
+ const despues=resumirAhorroReiniciado(aulas,periodos);
+ assert.equal(despues.totalCarrera,10);
+ assert.equal(despues.totalAhorro507,0);
+ assert.equal(despues.generaciones['gen-2026-2027-A-107'].aportacionCarrera,10);
+ aulas['2026-2027-A']['507'].pagosReinicio.e3_s0005=corregirRegistroPago(
+   aulas['2026-2027-A']['507'].pagosReinicio.e3_s0005,
+   {...args,accion:'restaurar',folio:'ev3',ahora:450,motivo:'Pago confirmado nuevamente'});
+ const restaurado=resumirAhorroReiniciado(aulas,periodos);
+ assert.equal(restaurado.totalCarrera,20);
+ assert.equal(restaurado.totalAhorro507,10);
 });
