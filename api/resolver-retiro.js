@@ -1,11 +1,15 @@
 import {adminDatabase,usuarioVerificado} from '../lib/adminServidor.js';
 import {resumirFondos} from '../lib/fondos.js';
 import {corteActivo,rutaRetiros,resumirAhorroReiniciado} from '../lib/reinicioContable.js';
+import {atenderCorreccionPago} from '../lib/apiCorreccionPago.js';
 
 export default async function handler(req,res){
   res.setHeader('Cache-Control','no-store');
   if(req.method!=='POST')return res.status(405).json({error:'Método no permitido.'});
-  if(!/^Bearer \S+$/.test(req.headers.authorization||''))return res.status(401).json({error:'Inicia sesión como administrador general.'});
+  if(!/^Bearer \S+$/.test(req.headers.authorization||''))return res.status(401).json({error:'Inicia sesión para gestionar movimientos de tu salón.'});
+  // Reutiliza el endpoint financiero existente: Vercel Hobby ya alcanza el
+  // máximo de funciones. Los retiros mantienen sus permisos generales.
+  if(req.body?.operacion==='correccionPago')return atenderCorreccionPago(req,res);
   const {periodo,salon,retiroId,estado}=req.body||{};
   if(typeof periodo!=='string'||!/^\d{4}-\d{4}-[A-Z0-9]{1,5}$/.test(periodo)||
      typeof salon!=='string'||!/^[A-Za-z0-9_-]{1,24}$/.test(salon)||
