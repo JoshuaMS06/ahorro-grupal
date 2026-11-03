@@ -292,13 +292,20 @@ try {
     try{
       const db=servidorDb(app),antes=(await db.ref('aulas').get()).val();
       const rolesInicial=(await db.ref('roles').get()).val();
+      assert.equal(rolesInicial?.adminGeneralUid,'adminGeneral');
       let callbacks=0;
       const result=await db.ref('roles').transaction(actual=>{
         callbacks++;
-        return proponerTransaccionRoles(actual,rolesInicial,{
+        try{return proponerTransaccionRoles(actual,rolesInicial,{
           accion:'asignar',periodo:'2026-2027-A',salon:'507',
           plaza:'1',uid:'responsableReal507',adminUid:'adminGeneral'
-        });
+        });}catch(error){
+          console.error('Diagnóstico seguro transacción: ',JSON.stringify({
+            nullInicial:actual==null,claves:Object.keys(actual||{}),
+            adminActual:actual?.adminGeneralUid,adminInicial:rolesInicial?.adminGeneralUid
+          }));
+          throw error;
+        }
       },undefined,false);
       assert.equal(result.committed,true);
       assert.ok(callbacks>0);
