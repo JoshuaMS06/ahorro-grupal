@@ -273,39 +273,34 @@ try {
     await assertSucceeds(get(ref(general,'aulas/2026-2027-A/507')));
   });
   await test('Firebase Admin asigna responsable del 507 sin tocar pagos ni romper roles existentes',async()=>{
-    await env.withSecurityRulesDisabled(async ctx=>{
-      await set(ref(ctx.database(),'roles'),{
-        adminGeneralUid:'adminGeneral',
-        porUsuario:{resp107:{periodo:'2026-2027-A',salon:'107',plaza:'1'}},
-        responsables:{'2026-2027-A':{'107':{'1':'resp107'}}}
-      });
-      await set(ref(ctx.database(),'aulas/2026-2027-A/507'),{
-        meta:{nombre:'Salón 507',cuotaSemanal:20},
-        integrantes:{e5:{nombre:'Alumno de prueba'}},
-        pagosReinicio:{e5_s0005:{estudianteId:'e5',semana:5,monto:20,estado:'pagado',fondoGrupo:10,fondoCarrera:10,creadoEn:200}}
-      });
-    });
     const app=iniciarServidor({
       projectId:'demo-ahorro-grupal',
       databaseURL:'https://demo-ahorro-grupal-default-rtdb.firebaseio.com'
     },'servidor-pruebas-responsables');
     try{
-      const db=servidorDb(app),antes=(await db.ref('aulas').get()).val();
+      // Preparar la misma instancia de la que leerá Firebase Admin.
+      // Algunas versiones del SDK de pruebas usan un namespace separado.
+      const db=servidorDb(app);
+      await db.ref('roles').set({
+        adminGeneralUid:'adminGeneral',
+        porUsuario:{resp107:{periodo:'2026-2027-A',salon:'107',plaza:'1'}},
+        responsables:{'2026-2027-A':{'107':{'1':'resp107'}}}
+      });
+      await db.ref('aulas/2026-2027-A/507').set({
+        meta:{nombre:'Salón 507',cuotaSemanal:20},
+        integrantes:{e5:{nombre:'Alumno de prueba'}},
+        pagosReinicio:{e5_s0005:{estudianteId:'e5',semana:5,monto:20,estado:'pagado',fondoGrupo:10,fondoCarrera:10,creadoEn:200}}
+      });
+      const antes=(await db.ref('aulas').get()).val();
       const rolesInicial=(await db.ref('roles').get()).val();
       assert.equal(rolesInicial?.adminGeneralUid,'adminGeneral');
       let callbacks=0;
       const result=await db.ref('roles').transaction(actual=>{
         callbacks++;
-        try{return proponerTransaccionRoles(actual,rolesInicial,{
+        return proponerTransaccionRoles(actual,rolesInicial,{
           accion:'asignar',periodo:'2026-2027-A',salon:'507',
           plaza:'1',uid:'responsableReal507',adminUid:'adminGeneral'
-        });}catch(error){
-          console.error('Diagnóstico seguro transacción: ',JSON.stringify({
-            nullInicial:actual==null,claves:Object.keys(actual||{}),
-            adminActual:actual?.adminGeneralUid,adminInicial:rolesInicial?.adminGeneralUid
-          }));
-          throw error;
-        }
+        });
       },undefined,false);
       assert.equal(result.committed,true);
       assert.ok(callbacks>0);
