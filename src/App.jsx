@@ -683,10 +683,10 @@ export default function App() {
   };
   const obtenerEnlaceResponsable=async({periodo,salon,plaza})=>{
     const token=await usuario.getIdToken();
-    const respuesta=await fetch('/api/enlace-responsable',{
+    const respuesta=await fetch('/api/responsables',{
       method:'POST',cache:'no-store',
       headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
-      body:JSON.stringify({periodo,salon,plaza})
+      body:JSON.stringify({accion:'enlace',periodo,salon,plaza})
     });
     const body=await respuesta.json().catch(()=>({}));
     if(!respuesta.ok)throw Error(body.error||`Error HTTP ${respuesta.status}`);
