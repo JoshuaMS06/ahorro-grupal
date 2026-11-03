@@ -828,19 +828,22 @@ export default function App() {
         </>}
         {vistaActiva==='pagos'&&<>
           <section className="ag-summary">
-            <div className="ag-balance"><div className="ag-balance-head"><Wallet size={19}/> <span>{esAdminGeneral?'FONDO DE LA CARRERA':`APORTACIONES DEL SALÓN ${salonId}`} </span></div>
-              <strong>{!reporteFondos||!reporteFondos.cifrasConfiables?'—':pesos(esAdminGeneral?reporteFondos.totalCarrera:reporteFondos.aportacionCarrera)}</strong>
-              <p>{esAdminGeneral?'Saldo de la carrera.':'Aportaciones del salón a la carrera.'}</p>
-              <div className="ag-balance-bottom"><span>Contribución a carrera: <b>{reporteFondos?pesos(reporteFondos.aportacionCarrera):'—'}</b></span><span>Semana seleccionada: <b>{semana}</b></span></div>
+            <div className="ag-balance"><div className="ag-balance-head"><Wallet size={19}/> <span>{esAdminGeneral?'FONDO DE LA CARRERA':generacionId==='gen-2026-2027-A-507'?'APORTACIONES TOTALES DEL 507':`APORTACIONES DEL SALÓN ${salonId}`} </span></div>
+              <strong>{!reporteFondos||!reporteFondos.cifrasConfiables?'—':pesos(esAdminGeneral?reporteFondos.totalCarrera:generacionId==='gen-2026-2027-A-507'?reporteFondos.totalAportadoSalon:reporteFondos.aportacionCarrera)}</strong>
+              <p>{esAdminGeneral?'Saldo de Industrial; incluye únicamente la aportación de $10 de cada pago del 507.':generacionId==='gen-2026-2027-A-507'?'Total recibido por el 507, dividido entre dos fondos de $10 por pago.':'Aportaciones del salón a la carrera.'}</p>
+              <div className="ag-balance-bottom"><span>Incluido en Industrial: <b>{reporteFondos?pesos(reporteFondos.aportacionCarrera):'—'}</b></span><span>Semana seleccionada: <b>{semana}</b></span></div>
             </div>
             <div className="ag-stats"><div><CircleDollarSign size={21}/><strong>{pesos(cuotaSemanal)}</strong><span>Por semana</span></div><div><UsersRound size={21}/><strong>{cargando?'—':lista.length}</strong><span>Integrantes</span></div><div><CheckCircle2 size={21}/><strong>{vigenteParaRegistrar?pagaron:'—'}</strong><span>Pagaron esta semana</span></div></div>
           </section>
-{generacionId==='gen-2026-2027-A-507'&&<Panel title="Ahorro del salón 507" icon={LockKeyhole}>
-            <p className="ag-muted">Cada aportación de $20 se divide en $10 para el ahorro privado del 507 y $10 para el fondo común de la carrera.</p>
+{generacionId==='gen-2026-2027-A-507'&&<Panel title="Distribución del ahorro del 507 · sin duplicaciones" icon={LockKeyhole}>
+            <p className="ag-muted">Por cada pago de <strong>$20 en total</strong>, se contabilizan exactamente <strong>$10 para Industrial</strong> y <strong>$10 para el ahorro privado del 507</strong>. Son partes del mismo pago, no dos pagos distintos.</p>
             <div className="ag-stats">
-              <div><LockKeyhole size={21}/><strong>{reporteFondos?pesos(reporteFondos.ahorroPropioSalon):'—'}</strong><span>Ahorro privado del salón 507</span></div>
-              <div><CircleDollarSign size={21}/><strong>{reporteFondos?pesos(reporteFondos.aportacionCarrera):'—'}</strong><span>Aportación del 507 al fondo de la carrera</span></div>
+              <div><LockKeyhole size={21}/><strong>{reporteFondos?pesos(reporteFondos.ahorroPropioSalon):'—'}</strong><span>Ahorro privado del salón 507 · $10 por pago</span></div>
+              <div><CircleDollarSign size={21}/><strong>{reporteFondos?pesos(reporteFondos.aportacionCarrera):'—'}</strong><span>Incluido en el fondo de Industrial · $10 por pago</span></div>
             </div>
+            <p className="ag-muted">Estos dos importes forman el total aportado por el 507. La parte de Industrial ya está incluida en el fondo común y <strong>no se suma otra vez</strong>.</p>
+            {reporteFondos?.conciliacion507 && !reporteFondos.conciliacion507.conciliado&&<div className="ag-error"><AlertTriangle size={17}/> Se detectaron {reporteFondos.conciliacion507.registrosIncorrectos} pagos del 507 con un reparto distinto a $10 + $10, o un descuadre en sus aportaciones. No se cambiaron registros históricos. Solicita revisión administrativa antes de corregir saldos.</div>}
+            {reporteFondos?.conciliacion507?.conciliado&&<div className="ag-note"><CheckCircle2 size={16}/> Distribución conciliada: {reporteFondos.conciliacion507.cobros} pago(s) activos, con total {pesos(reporteFondos.conciliacion507.recaudado)} = {pesos(reporteFondos.conciliacion507.industrial)} de Industrial + {pesos(reporteFondos.conciliacion507.privado)} del 507.</div>}
             <p className="ag-muted">Los pagos históricos conservan su desglose original.</p>
           </Panel>}
           {esCorteEnSalon&&<div className="ag-note"><History size={17}/> El fondo nuevo comienza en la semana 5. Las semanas 1 a 4 pueden capturarse como «Pagos anteriores», sin generar adeudos automáticos ni sumar al saldo actual.</div>}
