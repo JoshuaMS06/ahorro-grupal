@@ -498,10 +498,34 @@ export default function App() {
       return result.committed?'Estudiante agregado.':'El estudiante ya existe.';
     });
   };
+  // Anular/restaurar exige permiso real de responsable en el servidor.
+  // Nunca se borra el pago: se conserva su importe original y auditoría.
+  const corregirPagoDesdeServidor=async(e,accion,motivo)=>{
+    const token=await usuario.getIdToken();
+    const response=await fetch('/api/resolver-retiro',{
+      method:'POST',cache:'no-store',
+      headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+      body:JSON.stringify({operacion:'correccionPago',accion,
+        periodo:periodoId,salon:salonId,estudianteId:e.id,semana,motivo})
+    });
+    const body=await response.json().catch(()=>({}));
+    if(!response.ok)throw Error(body.error||`No se pudo corregir el pago (HTTP ${response.status}).`);
+    return body;
+  };
   const registrarPago=async e=>{
     if(!esAdmin||!vigenteParaRegistrar||vacacionesActivas||periodo?.meta?.cerradoEn)return;
     const key=pagoClave(e.id,semana);
     if(pagosSemana[key]?.estado==='pagado' || (esAnterior && esPagoLegado(pagosLegado,e.id,semana)))return;
+    if(pagosSemana[key]?.estado==='anulado'){
+      const motivo=window.prompt(`Motivo para volver a registrar el pago de ${e.nombreVisible}, semana ${semana}:`);
+      if(motivo===null)return;
+      if(motivo.trim().length<5||motivo.trim().length>200){setToast('Escribe un motivo de 5 a 200 caracteres.');return;}
+      await withOperation(`restaurar:${e.id}`,async()=>{
+        await corregirPagoDesdeServidor(e,'restaurar',motivo.trim());
+        return `Pago de ${pesos(cuotaSemanal)} restaurado para ${e.nombreVisible}. Se conserva el registro original y la corrección en el historial.`;
+      });
+      return;
+    }
     await withOperation(`pago:${e.id}`,async()=>{
       const eventoId=push(ref(database,`aulas/${periodoId}/${salonId}/${nodoPagoSemana}`)).key;
       const r=await runTransaction(ref(database,`aulas/${periodoId}/${salonId}/${nodoPagoSemana}/${key}`),v=>{
@@ -516,18 +540,14 @@ export default function App() {
   };
   const anularPago=async e=>{
     if(!esAdmin||!vigenteParaRegistrar||vacacionesActivas||periodo?.meta?.cerradoEn)return;
-    const motivo=window.prompt(`Motivo de anular el pago de ${e.nombreVisible} (semana ${semana}):`);
+    const motivo=window.prompt(`Motivo para anular el pago de ${e.nombreVisible} (semana ${semana}):`);
     if(motivo===null)return;
-    if(motivo.trim().length<5){setToast('Escribe un motivo de al menos 5 caracteres para la corrección.');return;}
-    const key=pagoClave(e.id,semana);
+    if(motivo.trim().length<5||motivo.trim().length>200){
+      setToast('Escribe un motivo de 5 a 200 caracteres para la corrección.');return;
+    }
     await withOperation(`anular:${e.id}`,async()=>{
-      const eventoId=push(ref(database,`aulas/${periodoId}/${salonId}/${nodoPagoSemana}`)).key;
-      const r=await runTransaction(ref(database,`aulas/${periodoId}/${salonId}/${nodoPagoSemana}/${key}`),v=>{
-        if(!v||v.estado!=='pagado')return;
-        const cuando=Date.now();
-        return {...v,estado:'anulado',anuladoEn:cuando,anuladoPor:usuario.uid,correcciones:(v.correcciones||0)+1,historial:{...(v.historial||{}),[eventoId]:{tipo:'anulacion',fecha:cuando,uid:usuario.uid,motivo:motivo.trim()}}};
-      },{applyLocally:false});
-      return r.committed?`Pago de ${pesos(cuotaSemanal)} anulado para ${e.nombreVisible}, semana ${semana}. La corrección quedó en el historial y los fondos se recalcularon.`:'El pago ya no estaba activo.';
+      await corregirPagoDesdeServidor(e,'anular',motivo.trim());
+      return `Pago de ${pesos(cuotaSemanal)} anulado para ${e.nombreVisible}, semana ${semana}. El historial permanece y los saldos se recalculan.`;
     });
   };
   const registrarPagoProfesor=async profesor=>{
