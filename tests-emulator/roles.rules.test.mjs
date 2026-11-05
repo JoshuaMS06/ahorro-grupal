@@ -35,6 +35,29 @@ try {
     await assertFails(get(ref(general,'/ahorro/integrantes')));
     await assertFails(get(ref(responsable107,'/ahorro/integrantes')));
   });
+  await test('los ingresos extra solo los consulta el servidor; avisos de retiro se leen en todos los salones',async()=>{
+    const aviso={tipo:'retiroCarrera',monto:25,fecha:1760000000100,estado:'realizado'};
+    await env.withSecurityRulesDisabled(async ctx=>{
+      const root=ctx.database();
+      await set(ref(root,'ahorro/ingresosExtras/2026-2027-A/i1'),{
+        tipo:'ingresoExtra',estado:'confirmado',fondo:'carrera',monto:50,periodo:'2026-2027-A',
+        creadoEn:1760000000100,registradoPor:'adminGeneral'});
+      await set(ref(root,'periodos/2026-2027-A/meta/avisosCarrera/107_r1'),aviso);
+      await set(ref(root,'codigosSalon/2026-2027-A/107'),{digest:'demo',version:1});
+    });
+    const visita=env.authenticatedContext('visitante_abc',{
+      rolSalon:'consulta',periodoCodigo:'2026-2027-A',salonCodigo:'107',versionCodigo:1
+    }).database();
+    for(const db of [general,responsable107,responsable307,visita]){
+      const visto=await assertSucceeds(get(ref(db,'periodos/2026-2027-A/meta/avisosCarrera/107_r1')));
+      assert.deepEqual(visto.val(),aviso);
+      await assertFails(get(ref(db,'ahorro/ingresosExtras/2026-2027-A/i1')));
+    }
+    await assertFails(get(ref(invitado,'periodos/2026-2027-A/meta/avisosCarrera/107_r1')));
+    await assertFails(set(ref(responsable107,'periodos/2026-2027-A/meta/avisosCarrera/107_falso'),aviso));
+    await assertFails(set(ref(responsable307,'ahorro/ingresosExtras/2026-2027-A/i2'),{
+      monto:999,estado:'confirmado'}));
+  });
   await test('responsable registra pago, pero no lo modifica ni accede a otro salón',async()=>{
     const pago={estudianteId:'e1',semana:1,monto:10,fondoGrupo:0,fondoCarrera:10,estado:'pagado',creadoEn:1760000000000,registradoPor:'resp107',historial:{ev1:{tipo:'registro',fecha:1760000000000,uid:'resp107'}}};
     await assertSucceeds(set(ref(responsable107,`${location}/pagos/e1_s0001`),pago));
