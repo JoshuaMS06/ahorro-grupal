@@ -641,8 +641,8 @@ export default function App() {
     const confirmacion=window.prompt(
       `${accionTexto} en el ciclo ${periodoId}.\n\n`+
       (accion==='iniciar'
-        ? `La semana ${semanaActual} quedará congelada. No se registrarán nuevas aportaciones hasta reanudar.\n\n`
-        : `Se retomará la semana ${semanaActual}; la siguiente empezará el próximo lunes. No se cobrarán semanas de vacaciones.\n\n`)+
+        ? `La semana ${semanaActualMostrada} quedará congelada. No se registrarán nuevas aportaciones hasta reanudar.\n\n`
+        : `Se retomará la semana ${semanaActualMostrada}; la siguiente empezará el próximo lunes. No se cobrarán semanas de vacaciones.\n\n`)+
       'Escribe exactamente CONFIRMAR para continuar:'
     );
     if(confirmacion===null)return;
@@ -654,7 +654,7 @@ export default function App() {
           try{return aplicarVacaciones(meta,accion,ahora);}catch{return;}
         },{applyLocally:false});
         if(!r.committed)throw Error('El estado del calendario cambió o la operación no está permitida.');
-        return accion==='iniciar'?`Vacaciones iniciadas. Semana ${r.snapshot.val().vacaciones.semanaPausada} congelada.`:'Clases reanudadas. La siguiente semana comenzará el próximo lunes.';
+        return accion==='iniciar'?`Vacaciones iniciadas. Semana ${numeroSemanaVisible(periodoId,r.snapshot.val().vacaciones.semanaPausada)} congelada.`:'Clases reanudadas. La siguiente semana comenzará el próximo lunes.';
       }
       const token=await usuario.getIdToken();
       const respuesta=await fetch('/api/control-vacaciones',{
@@ -663,7 +663,7 @@ export default function App() {
       });
       const body=await respuesta.json().catch(()=>({}));
       if(!respuesta.ok)throw Error(body.error||`No se pudo modificar el calendario (HTTP ${respuesta.status}).`);
-      return accion==='iniciar'?`Vacaciones iniciadas. Semana ${body.semana} congelada.`:'Clases reanudadas. La siguiente semana comenzará el próximo lunes.';
+      return accion==='iniciar'?`Vacaciones iniciadas. Semana ${numeroSemanaVisible(periodoId,body.semana)} congelada.`:'Clases reanudadas. La siguiente semana comenzará el próximo lunes.';
     });
   };
   const activarReinicioSeguro=async()=>{
@@ -713,7 +713,7 @@ export default function App() {
   const cerrarCiclo=async()=>{
     if(!esAdminGeneral||!periodo?.meta||periodo?.meta?.cerradoEn||vacacionesActivas)return;
     const actual=semanaPeriodo(periodo.meta);
-    if(!window.confirm(`¿Cerrar el ciclo ${periodoId} al terminar la semana ${actual}? Se conservarán sus pagos, pero se bloquearán nuevos registros en la aplicación. Comprueba antes que no existan solicitudes de retiro pendientes en ningún salón.`))return;
+    if(!window.confirm(`¿Cerrar el ciclo ${periodoId} al terminar la semana ${numeroSemanaVisible(periodoId,actual)}? Se conservarán sus pagos, pero se bloquearán nuevos registros en la aplicación. Comprueba antes que no existan solicitudes de retiro pendientes en ningún salón.`))return;
     await withOperation('cierre',async()=>{
       const r=await runTransaction(ref(database,`periodos/${periodoId}/meta`),meta=>{
         if(!meta||meta.cerradoEn)return;
@@ -819,7 +819,7 @@ export default function App() {
         ocupado={!!operacion} error={errorAcceso} modoDemo={usarEmuladores}/> : <main className="ag-main">
         {dbError&&<div className="ag-error"><AlertTriangle size={18}/> {dbError}</div>}
         <div className="ag-intro"><div><span className="ag-kicker">{esAdminGeneral?'ADMINISTRACIÓN GENERAL · INGENIERÍA INDUSTRIAL':`SALÓN · ${salonId} · ${periodo?.meta?.nombre||periodoId}`} {periodo?.meta?.cerradoEn?' · CICLO ARCHIVADO':''}</span><h1>{esAdminGeneral?'Panel de administración':'Control de aportaciones'}</h1><p>{esAdminGeneral?'Gestión del fondo de la carrera':esInvitadoCodigo?`Consulta privada del salón · ${pesos(cuotaSemanal)} por semana.`:`Registro de tu salón · ${pesos(cuotaSemanal)} por semana.`}</p></div><div className="ag-week-pill"><CalendarClock size={19}/> Semana {semanaActualMostrada}</div></div>
-        {vacacionesActivas&&<div className="ag-note"><PauseCircle size={17}/> Vacaciones activas: semana {semanaActual} congelada. No se registran aportaciones ni nuevas semanas pendientes.</div>}
+        {vacacionesActivas&&<div className="ag-note"><PauseCircle size={17}/> Vacaciones activas: semana {semanaActualMostrada} congelada. No se registran aportaciones ni nuevas semanas pendientes.</div>}
         <div className="ag-selectors">
           <label>Ciclo escolar<select disabled={!esAdminGeneral} value={periodoId} onChange={e=>cambiarPeriodo(e.target.value)}>{periodKeys.length ? periodKeys.map(k=><option key={k} value={k}>{periodos[k]?.meta?.nombre||k}</option>):<option value={defaultPeriod}>Sin listas importadas</option>}</select></label>
           <label>Salón<select disabled={!esAdminGeneral} value={salonId} onChange={e=>cambiarSalon(e.target.value)}>{salones.length ? salones.map(k=><option key={k} value={k}>{periodo?.salones?.[k]?.nombre||`Salón ${k}`}</option>):<option value="507">Sin salones</option>}</select></label>
