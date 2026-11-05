@@ -127,6 +127,7 @@ export default function App() {
   const [modalInstalar,setModalInstalar]=useState(false);
   const [instalada,setInstalada]=useState(()=>window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone===true);
   const primerEvento=useRef(null);
+  const intentoIngresoExtra=useRef(null);
   const esAdminGeneral=Boolean(usuario && uidAdminGeneral && uidAdminGeneral===usuario.uid);
   const esResponsable=Boolean(usuario && !esAdminGeneral && esResponsableDeSalon(asignacion,periodoId,salonId));
   const esAdmin=esAdminGeneral || esResponsable;
@@ -597,6 +598,33 @@ export default function App() {
       return tx.committed?'Pago de profesor anulado; se conserva en su historial.':'El pago ya no estaba activo.';
     });
   };
+  const ingresarExtraGeneral=async e=>{
+    e.preventDefault();
+    if(!esAdminGeneral||periodo?.meta?.cerradoEn||!ahorroNuevoActivo)return;
+    const monto=Number(montoExtra);
+    if(!Number.isSafeInteger(monto)||monto<1||monto>1000000){
+      setToast('Introduce un importe entero positivo, máximo $1,000,000.');return;
+    }
+    if(!window.confirm(`¿Agregar ${pesos(monto)} al fondo general de Ingeniería Industrial?\n\nNo se asignará a un salón o estudiante. Quedará guardado como ingreso extra.`))return;
+    await withOperation('ingreso-extra',async()=>{
+      if(!intentoIngresoExtra.current||intentoIngresoExtra.current.monto!==monto||
+        intentoIngresoExtra.current.periodo!==periodoId){
+        intentoIngresoExtra.current={periodo:periodoId,monto,
+          ingresoId:push(ref(database,'ahorro/ingresosExtras')).key};
+      }
+      const token=await usuario.getIdToken();
+      const respuesta=await fetch('/api/resolver-retiro',{
+        method:'POST',cache:'no-store',
+        headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+        body:JSON.stringify({operacion:'ingresoExtra',...intentoIngresoExtra.current})
+      });
+      const datos=await respuesta.json().catch(()=>({}));
+      if(!respuesta.ok)throw Error(datos.error||`No se pudo registrar el ingreso (HTTP ${respuesta.status}).`);
+      intentoIngresoExtra.current=null;
+      setMontoExtra('');
+      return `Se agregaron ${pesos(monto)} al fondo general.${datos.actualizadoEnVivo===false?' Si todavía no aparece el importe, actualiza la aplicación.':''}`;
+    });
+  };
   const solicitarRetiro=async e=>{
     e.preventDefault();
     if(!esAdmin||periodo?.meta?.cerradoEn||(periodoId==='2026-2027-A'&&!ahorroNuevoActivo))return;
@@ -834,6 +862,9 @@ export default function App() {
           <label>Ciclo escolar<select disabled={!esAdminGeneral} value={periodoId} onChange={e=>cambiarPeriodo(e.target.value)}>{periodKeys.length ? periodKeys.map(k=><option key={k} value={k}>{periodos[k]?.meta?.nombre||k}</option>):<option value={defaultPeriod}>Sin listas importadas</option>}</select></label>
           <label>Salón<select disabled={!esAdminGeneral} value={salonId} onChange={e=>cambiarSalon(e.target.value)}>{salones.length ? salones.map(k=><option key={k} value={k}>{periodo?.salones?.[k]?.nombre||`Salón ${k}`}</option>):<option value="507">Sin salones</option>}</select></label>
         </div>
+        {avisosGlobales[0]&&<div className="ag-note" role="status">
+          <BellRing size={17}/> Último aviso del fondo general: retiro de <strong>{pesos(avisosGlobales[0].monto)}</strong> de Industrial el {fechaLarga(avisosGlobales[0].fecha)}. Ya se descontó del saldo; no está pendiente.
+        </div>}
         <div className="ag-tabs" role="tablist" aria-label="Apartados">{esAdminGeneral&&<button className={vistaActiva==='panel'?'active':''} onClick={()=>setVista('panel')}><LayoutDashboard size={17}/> Inicio</button>}<button className={vistaActiva==='pagos'?'active':''} onClick={()=>setVista('pagos')}><Wallet size={17}/> Aportaciones</button>{esAdmin&&<button className={vistaActiva==='consulta'?'active':''} onClick={()=>setVista('consulta')}><UsersRound size={17}/> Consultar salones</button>}{esAdmin&&<button className={vistaActiva==='profesores'?'active':''} onClick={()=>setVista('profesores')}><GraduationCap size={17}/> Profesores</button>}{esAdmin&&<button className={vistaActiva==='gestion'?'active':''} onClick={()=>setVista('gestion')}><BookOpen size={17}/> Ciclos y salones</button>}{esAdminGeneral&&<button className={vistaActiva==='roles'?'active':''} onClick={()=>setVista('roles')}><ShieldCheck size={17}/> Responsables</button>}{esAdminGeneral&&<button className={vistaActiva==='lectores'?'active':''} onClick={()=>setVista('lectores')}><LockKeyhole size={17}/> Accesos</button>}</div>
         {vistaActiva==='panel'&&esAdminGeneral&&<>
           <section className="ag-general-hero" aria-label="Resumen general del ahorro de carrera">
@@ -843,6 +874,19 @@ export default function App() {
             {reporteError&&<div className="ag-error"><AlertTriangle size={17}/>{reporteError}</div>}
             {reporteFondos&&!reporteFondos.cifrasConfiables&&<div className="ag-note"><AlertTriangle size={17}/> Hay retiros antiguos por clasificar. El saldo disponible se oculta hasta conciliarlos.</div>}
           </section>
+          <Panel title="Añadir dinero extra al fondo general" icon={CircleDollarSign}>
+            <p className="ag-muted">Agrega directamente un importe a Industrial, sin seleccionar alumnos o salones ni escribir motivos. El extra aumenta el fondo general y no modifica las aportaciones de los grupos.</p>
+            <form className="ag-simple-form" onSubmit={ingresarExtraGeneral}>
+              <label>Dinero extra a agregar (pesos)
+                <input type="number" min="1" max="1000000" step="1" value={montoExtra}
+                  onChange={e=>setMontoExtra(e.target.value)} placeholder="Ej. 150" required/>
+              </label>
+              <SmallButton type="submit" variant="primary" disabled={!!operacion||!ahorroNuevoActivo||!!periodo?.meta?.cerradoEn}>
+                <Plus size={17}/> Agregar al fondo general
+              </SmallButton>
+            </form>
+            <p className="ag-muted">Ingresos extra acumulados: <strong>{reporteFondos?pesos(reporteFondos.extraIngresado||0):'—'}</strong>. Los movimientos se respaldan de forma privada para mantener los cálculos correctos.</p>
+          </Panel>
           <section className="ag-general-metrics" aria-label="Resumen del ciclo">
             <div><UsersRound size={22}/><strong>{Object.keys(periodo?.salones||{}).length}</strong><span>Salones del ciclo</span></div>
             <div><UserCog size={22}/><strong>{Object.values(responsables?.[periodoId]||{}).reduce((n,p)=>n+Object.values(p||{}).filter(Boolean).length,0)}</strong><span>Responsables asignados</span></div>
@@ -926,7 +970,13 @@ export default function App() {
            </form>
            <p className="ag-muted">Confirmarás el importe antes del descuento. El retiro queda en el historial y no cambia pagos anteriores.</p>
          </Panel>}
-        <Panel title="Avisos de movimientos y retiros" icon={BellRing} action={<SmallButton onClick={permitirAvisos}><Bell size={16}/> Permitir avisos</SmallButton>}><p className="ag-muted">Solicitudes y retiros correspondientes a la carrera. Los avisos del dispositivo funcionan mientras la aplicación está abierta.</p>{!datos?.meta?<div className="ag-empty-small">Selecciona un salón configurado.</div>:<div className="ag-timeline">{avisosVisibles.map(r=><div key={r.id} className="ag-withdrawal"><div className="ag-withdrawal-head"><span className={`ag-status ag-status-${r.estado}`}>{r.estado==='solicitado'?'Solicitud de retiro':r.estado==='aprobado'?(r.tipo==='directo'?'Retiro realizado':'Retiro aprobado'):'Solicitud rechazada'}</span><strong>{pesos(r.monto)}</strong></div>{r.motivo&&r.motivo!=='Retiro directo'&&<p>{r.motivo}</p>}<small>{fechaLarga(r.creadoEn)} {r.respondidoEn?`· Resuelto ${fechaLarga(r.respondidoEn)}`:''}</small>{esAdminGeneral&&r.fondo==='carrera'&&!periodo?.meta?.cerradoEn&&r.estado==='solicitado'&&<div className="ag-withdrawal-buttons"><SmallButton disabled={!!operacion} onClick={()=>resolverRetiro(r,'aprobado')} variant="primary"><Check size={16}/> Aprobar y descontar</SmallButton><SmallButton disabled={!!operacion} onClick={()=>resolverRetiro(r,'rechazado')}>Rechazar</SmallButton></div>}</div>)}{!avisosVisibles.length&&<p className="ag-muted">No existen avisos de retiro para este salón.</p>}</div>}</Panel></>}
+        <Panel title="Avisos de movimientos y retiros" icon={BellRing} action={<SmallButton onClick={permitirAvisos}><Bell size={16}/> Permitir avisos</SmallButton>}><p className="ag-muted">Los retiros ya realizados de Industrial aparecen para todos los salones. También se descuentan automáticamente del fondo general; las notificaciones del dispositivo funcionan cuando la aplicación está abierta y el permiso está activado.</p>
+          {avisosGlobales.map(a=><div className="ag-withdrawal" key={a.id}>
+            <div className="ag-withdrawal-head"><span className="ag-status ag-status-aprobado">Retiro de Industrial · Realizado</span><strong>−{pesos(a.monto)}</strong></div>
+            <small>{fechaLarga(a.fecha)} · Descontado del fondo general</small>
+          </div>)}
+          {!avisosGlobales.length&&<p className="ag-muted">Todavía no hay avisos compartidos de retiros de Industrial.</p>}
+          {!datos?.meta?<div className="ag-empty-small">Selecciona un salón configurado.</div>:<div className="ag-timeline">{avisosVisibles.map(r=><div key={r.id} className="ag-withdrawal"><div className="ag-withdrawal-head"><span className={`ag-status ag-status-${r.estado}`}>{r.estado==='solicitado'?'Solicitud de retiro':r.estado==='aprobado'?(r.tipo==='directo'?'Retiro realizado':'Retiro aprobado'):'Solicitud rechazada'}</span><strong>{pesos(r.monto)}</strong></div>{r.motivo&&r.motivo!=='Retiro directo'&&<p>{r.motivo}</p>}<small>{fechaLarga(r.creadoEn)} {r.respondidoEn?`· Resuelto ${fechaLarga(r.respondidoEn)}`:''}</small>{esAdminGeneral&&r.fondo==='carrera'&&!periodo?.meta?.cerradoEn&&r.estado==='solicitado'&&<div className="ag-withdrawal-buttons"><SmallButton disabled={!!operacion} onClick={()=>resolverRetiro(r,'aprobado')} variant="primary"><Check size={16}/> Aprobar y descontar</SmallButton><SmallButton disabled={!!operacion} onClick={()=>resolverRetiro(r,'rechazado')}>Rechazar</SmallButton></div>}</div>)}{!avisosVisibles.length&&<p className="ag-muted">No existen avisos de retiro para este salón.</p>}</div>}</Panel></>}
         {vistaActiva==='consulta'&&esAdmin&&<Panel title="Aportaciones de los salones a la carrera" icon={UsersRound}>
           <ConsultaSalones usuario={usuario} periodoId={periodoId} salonActual={salonId}/>
         </Panel>}
