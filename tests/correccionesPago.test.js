@@ -73,3 +73,45 @@ test('al anular o restaurar $20 del 507, cambian ambos fondos $10 sin modificar 
  assert.equal(restaurado.totalCarrera,20);
  assert.equal(restaurado.totalAhorro507,10);
 });
+
+test('un pago puede alternarse 60 veces sin límite arbitrario ni alterar el importe del 507',()=>{
+ const periodos={'2026-2027-A':{meta:{reinicioContable:{version:1,semanaInicio:5,activadoEn:100}}}};
+ let pagoActual=structuredClone(inicial);
+ for(let i=0;i<60;i++){
+   const accion=i%2===0?'anular':'restaurar';
+   pagoActual=corregirRegistroPago(pagoActual,{
+     accion,estudianteId:'e3',semana:5,uid:'responsable507',
+     motivo:accion==='anular'?'Pago anulado desde aportaciones':'Pago restaurado desde aportaciones',
+     folio:`correccion_${i}`,ahora:500+i
+   });
+   assert.equal(pagoActual.estado,i%2===0?'anulado':'pagado');
+   assert.equal(pagoActual.monto,20);
+   assert.equal(pagoActual.fondoGrupo,10);
+   assert.equal(pagoActual.fondoCarrera,10);
+   assert.equal(pagoActual.creadoEn,200);
+   assert.equal(pagoActual.registradoPor,'responsable1');
+   const aulas={'2026-2027-A':{'507':{meta:{cuotaSemanal:20},pagosReinicio:{e3_s0005:pagoActual}}}};
+   const resumen=resumirAhorroReiniciado(aulas,periodos);
+   assert.equal(resumen.totalAhorro507,i%2===0?0:10);
+   assert.equal(resumen.totalCarrera,i%2===0?0:10);
+ }
+ assert.equal(pagoActual.correcciones,60);
+ assert.equal(Object.keys(pagoActual.historial).length,61);
+ assert.equal(pagoActual.estado,'pagado');
+});
+test('un pago del 107 admite alternancias ilimitadas y solo actualiza el fondo Industrial',()=>{
+ let p={...inicial,monto:10,fondoGrupo:0,fondoCarrera:10};
+ for(let i=0;i<24;i++){
+   const accion=i%2===0?'anular':'restaurar';
+   p=corregirRegistroPago(p,{
+     accion,estudianteId:'e3',semana:5,uid:'responsable107',
+     motivo:'Corrección directa de aportaciones',folio:`evento_${i}`,ahora:600+i
+   });
+ }
+ const periodos={'2026-2027-A':{meta:{reinicioContable:{version:1,semanaInicio:5,activadoEn:100}}}};
+ const aulas={'2026-2027-A':{'107':{meta:{cuotaSemanal:10},pagosReinicio:{e3_s0005:p}}}};
+ const resumen=resumirAhorroReiniciado(aulas,periodos);
+ assert.equal(resumen.totalCarrera,10);
+ assert.equal(resumen.totalAhorro507,0);
+ assert.equal(p.correcciones,24);
+});
