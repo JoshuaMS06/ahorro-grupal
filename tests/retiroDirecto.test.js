@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {saldoRetirableSalon,crearRetiroDirecto} from '../lib/retiroDirecto.js';
+import {resumirAhorroReiniciado} from '../lib/reinicioContable.js';
+import {informeVisibleSegunRol} from '../lib/informeRoles.js';
 const periodo='2026-2027-A';
 const periodos={[periodo]:{meta:{reinicioContable:{version:1,semanaInicio:5,activadoEn:100}}}};
 const pago=(monto,fondoGrupo,fondoCarrera)=>({
@@ -43,4 +45,36 @@ test('el retiro se registra sin justificación solicitada y conserva usuario e i
 test('rechaza cantidades inválidas y cuentas sin saldo suficiente',()=>{
  assert.throws(()=>crearRetiroDirecto({uid:'a',monto:-20,fondo:'carrera',ahora:1}),/válidos/);
  assert.throws(()=>saldoRetirableSalon(base(),{},periodo,'107','carrera'),/activada/);
+});
+
+test('507 mantiene total recibido bruto y saldo privado neto después del retiro, sin fuga a otros grupos',()=>{
+ const aulas=base();
+ const previo=resumirAhorroReiniciado(aulas,periodos);
+ const fondoCarreraAntes=previo.totalCarrera;
+ aulas[periodo]['507'].retirosReinicio.privado=crearRetiroDirecto({
+   uid:'responsable507',monto:7,fondo:'grupo',ahora:300
+ });
+ const resumen=resumirAhorroReiniciado(aulas,periodos);
+ assert.equal(resumen.totalCarrera,fondoCarreraAntes);
+ assert.equal(resumen.totalAhorro507,13);
+ assert.equal(resumen.conciliacion507.recaudado,40);
+ assert.equal(resumen.conciliacion507.industrial,20);
+ assert.equal(resumen.conciliacion507.privado,20);
+ assert.equal(resumen.conciliacion507.retirosPrivados,7);
+ assert.equal(resumen.conciliacion507.saldoPrivado,13);
+ assert.equal(resumen.conciliacion507.conciliado,true);
+ const informe507=informeVisibleSegunRol(resumen,{tipo:'responsable'},'gen-2026-2027-A-507');
+ assert.equal(informe507.totalAportadoSalon,40);
+ assert.equal(informe507.ahorroPropioSalon,13);
+ assert.equal(informe507.saldoCarreraSalon,20);
+ const informe107=informeVisibleSegunRol(resumen,{tipo:'responsable'},'gen-2026-2027-A-107');
+ assert.equal(informe107.ahorroPropioSalon,0);
+ assert.equal(informe107.conciliacion507,null);
+});
+test('el saldo de carrera mostrado no puede ser superior al fondo global disponible',()=>{
+ const aulas=base();
+ aulas[periodo]['107'].retirosReinicio.carrera=crearRetiroDirecto({uid:'resp107',monto:10,fondo:'carrera',ahora:300});
+ assert.equal(saldoRetirableSalon(aulas,periodos,periodo,'107','carrera').disponible,0);
+ const informe=informeVisibleSegunRol(resumirAhorroReiniciado(aulas,periodos),{tipo:'responsable'},'gen-2026-2027-A-107');
+ assert.equal(informe.saldoCarreraSalon,0);
 });
