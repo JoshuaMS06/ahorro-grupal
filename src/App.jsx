@@ -127,7 +127,7 @@ export default function App() {
   const [modalInstalar,setModalInstalar]=useState(false);
   const [instalada,setInstalada]=useState(()=>window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone===true);
   const primerEvento=useRef(null);
-  const inicioEscuchaAvisos=useRef(Date.now());
+  const inicioEscuchaAvisos=useRef(0);
   const intentoIngresoExtra=useRef(null);
   const esAdminGeneral=Boolean(usuario && uidAdminGeneral && uidAdminGeneral===usuario.uid);
   const esResponsable=Boolean(usuario && !esAdminGeneral && esResponsableDeSalon(asignacion,periodoId,salonId));
@@ -141,6 +141,8 @@ export default function App() {
   const reporteFondos=tieneAcceso && estadoReporteFondos?.clave===reporteClave && estadoReporteFondos?.uid===usuario?.uid ? estadoReporteFondos.informe : null;
   const reporteError=tieneAcceso && estadoReporteError?.clave===reporteClave && estadoReporteError?.uid===usuario?.uid ? estadoReporteError.texto : '';
 
+
+  useEffect(()=>{inicioEscuchaAvisos.current=Date.now();},[]);
 
   // Nuevos roles: un solo administrador general y dos plazas por salón.
   // Antes de publicar se deben configurar roles/adminGeneralUid y probar las reglas en el emulador.
