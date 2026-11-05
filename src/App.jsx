@@ -9,7 +9,7 @@ import {
   AlertTriangle, GraduationCap, ArrowDownRight, Eye, EyeOff, LayoutDashboard, UserCog, FileSpreadsheet, PauseCircle, PlayCircle,
 } from 'lucide-react';
 import { cuotaDeSalon, esLunes, estadoSemana, fechaMexico, isClassCode, isPeriodId, pagoClave, semanaPeriodo } from '../lib/aulas.js';
-import {etiquetaSemana,numeroSemanaVisible} from '../lib/semanaPresentacion.js';
+import {etiquetaSemana,numeroSemanaVisible,textoConfirmacionRestaurarPago} from '../lib/semanaPresentacion.js';
 import {corteActivo, esPeriodoReinicio, rutaPagos, rutaRetiros, inicioAportaciones, resumirAhorroReiniciado} from '../lib/reinicioContable.js';
 import {esSemanaAnterior, rutaPagoSeleccionado, primeraSemanaVisible, esPagoLegado, resumenPagosAnteriores} from '../lib/pagosAnteriores.js';
 import {PROFESORES, CUOTA_PROFESOR, claveSemanaProfesor, resumenAcumuladoProfesor, crearPagoProfesor, esPagoProfesorAnterior} from '../lib/profesoresAhorro.js';
@@ -533,12 +533,12 @@ export default function App() {
     const key=pagoClave(e.id,semana);
     if(pagosSemana[key]?.estado==='pagado' || (esAnterior && esPagoLegado(pagosLegado,e.id,semana)))return;
     if(pagosSemana[key]?.estado==='anulado'){
-      const motivo=window.prompt(`Motivo para volver a registrar el pago de ${e.nombreVisible}, semana ${semana}:`);
-      if(motivo===null)return;
-      if(motivo.trim().length<5||motivo.trim().length>200){setToast('Escribe un motivo de 5 a 200 caracteres.');return;}
+      // La reactivación confirma el movimiento sin pedir una justificación manual.
+      // El servidor conserva la auditoría con motivo estándar y el ID interno.
+      if(!window.confirm(textoConfirmacionRestaurarPago(periodoId,semana,e.nombreVisible)))return;
       await withOperation(`restaurar:${e.id}`,async()=>{
-        await corregirPagoDesdeServidor(e,'restaurar',motivo.trim());
-        return `Pago de ${pesos(cuotaSemanal)} restaurado para ${e.nombreVisible}. Se conserva el registro original y la corrección en el historial.`;
+        await corregirPagoDesdeServidor(e,'restaurar','Pago restaurado por corrección');
+        return `Pago de ${pesos(cuotaSemanal)} restaurado para ${e.nombreVisible}, ${etiquetaSemana(periodoId,semana)}. Se conserva el historial original.`;
       });
       return;
     }
@@ -551,19 +551,19 @@ export default function App() {
         if(cuotaSemanal!==d.cuota)throw Error('La cuota del salón y el tipo de ahorro no coinciden.');
         return {...(v||{}),estudianteId:e.id,nombre:e.nombre,semana,monto:cuotaSemanal,fondoGrupo:esAnterior?0:d.grupo,fondoCarrera:esAnterior?0:d.carrera,...(esAnterior?{tipoRegistro:'anterior'}:{}),estado:'pagado',creadoEn:v?.creadoEn||cuando,registradoPor:v?.registradoPor||usuario.uid,correcciones:v?.correcciones||0,historial:{...(v?.historial||{}),[eventoId]:{tipo:'registro',fecha:cuando,uid:usuario.uid}}};
       },{applyLocally:false});
-      return r.committed?`Pago de ${pesos(cuotaSemanal)} registrado para ${e.nombreVisible}, semana ${semana}${esAnterior?' en PAGOS ANTERIORES (fuera del fondo actual)':''}.`:'Esta semana ya estaba pagada.';
+      return r.committed?`Pago de ${pesos(cuotaSemanal)} registrado para ${e.nombreVisible}, ${etiquetaSemana(periodoId,semana)}${esAnterior?' en PAGOS ANTERIORES (fuera del fondo actual)':''}.`:'Esta semana ya estaba pagada.';
     });
   };
   const anularPago=async e=>{
     if(!esAdmin||!vigenteParaRegistrar||vacacionesActivas||periodo?.meta?.cerradoEn)return;
-    const motivo=window.prompt(`Motivo para anular el pago de ${e.nombreVisible} (semana ${semana}):`);
+    const motivo=window.prompt(`Motivo para anular el pago de ${e.nombreVisible} (${etiquetaSemana(periodoId,semana)}):`);
     if(motivo===null)return;
     if(motivo.trim().length<5||motivo.trim().length>200){
       setToast('Escribe un motivo de 5 a 200 caracteres para la corrección.');return;
     }
     await withOperation(`anular:${e.id}`,async()=>{
       await corregirPagoDesdeServidor(e,'anular',motivo.trim());
-      return `Pago de ${pesos(cuotaSemanal)} anulado para ${e.nombreVisible}, semana ${semana}. El historial permanece y los saldos se recalculan.`;
+      return `Pago de ${pesos(cuotaSemanal)} anulado para ${e.nombreVisible}, ${etiquetaSemana(periodoId,semana)}. El historial permanece y los saldos se recalculan.`;
     });
   };
   const registrarPagoProfesor=async profesor=>{
@@ -580,12 +580,12 @@ export default function App() {
           historial:{...(v.historial||{}),[folio]:{tipo:'registro',fecha:ahora,uid:usuario.uid}}};
         return crearPagoProfesor(profesor.id,semanaProfesor,usuario.uid,folio,ahora,periodoId);
       },{applyLocally:false});
-      return tx.committed?`Profesor: ${profesor.nombre}. Semana ${semanaProfesor}, ${pesos(CUOTA_PROFESOR)} registrados en su ahorro independiente.`:'Este pago ya se había registrado.';
+      return tx.committed?`Profesor: ${profesor.nombre}. ${etiquetaSemana(periodoId,semanaProfesor)}, ${pesos(CUOTA_PROFESOR)} registrados en su ahorro independiente.`:'Este pago ya se había registrado.';
     });
   };
   const anularPagoProfesor=async profesor=>{
     if(!esAdminGeneral || vacacionesActivas || periodo?.meta?.cerradoEn)return;
-    const motivo=window.prompt(`Motivo para anular el ahorro de ${profesor.nombre} en la semana ${semanaProfesor}:`);
+    const motivo=window.prompt(`Motivo para anular el ahorro de ${profesor.nombre} en ${etiquetaSemana(periodoId,semanaProfesor)}:`);
     if(motivo===null)return;
     if(motivo.trim().length<5){setToast('Escribe un motivo de al menos 5 caracteres.');return;}
     await withOperation(`anular-profesor:${profesor.id}`,async()=>{
@@ -944,7 +944,7 @@ export default function App() {
             {esAnterior&&<div className="ag-note"><History size={16}/> {etiquetaSemana(periodoId,semana)}: registra aquí los pagos atrasados del periodo anterior al reinicio. Se guardan como historial independiente, no generan adeudos automáticos y NO aumentan el saldo de la carrera. Si ya había un pago anterior registrado, se respeta y no se duplica.</div>}
             <div className="ag-toolbar"><label className="ag-search"><Search size={17}/><input placeholder="Buscar por nombre o control..." value={search} onChange={e=>setSearch(e.target.value)}/></label><div className="ag-filters"><button className={filtro==='todos'?'active':''} onClick={()=>setFiltro('todos')}>Todos</button><button className={filtro==='pagado'?'active':''} onClick={()=>setFiltro('pagado')}>Pagaron</button><button className={filtro==='pendiente'?'active':''} onClick={()=>setFiltro('pendiente')}>{esAnterior?'Sin registrar':'Pendientes'}</button></div></div>
             {!vigenteParaRegistrar&&<div className="ag-note"><History size={16}/> Esta semana corresponde al historial anterior o a un periodo sin registros detallados. No se muestran supuestos adeudos.</div>}
-            <div className="ag-student-list">{visible.map(e=>{const estado=estadoAlumno(e);return <article className="ag-student" key={e.id}><span className="ag-avatar" aria-hidden="true"><UserRound size={22} strokeWidth={2.2}/></span><div className="ag-student-info"><strong title={e.nombre}>{e.nombreVisible}</strong><small>{e.control?`Control ${e.control} · `:''}{etiquetaSemana(periodoId,semana)}</small></div><span className={`ag-status ag-status-${estado}`}>{estado==='pagado'?<><Check size={14}/> Pagó</>:estado==='pendiente'?(esAnterior?'Sin registrar':'Pendiente'):'Sin desglose'}</span>{esAdmin&&vigenteParaRegistrar&&!vacacionesActivas&&!periodo?.meta?.cerradoEn&&<div className="ag-pay-actions">{estado==='pagado' ? (esAnterior&&esPagoLegado(pagosLegado,e.id,semana) ? <span title="Pago legado conservado; no se puede modificar aquí"><LockKeyhole size={18}/></span> : <button title="Anular pago registrado por error (requiere motivo y conserva el historial)" aria-label={`Anular aporte de ${e.nombreVisible} en semana ${semana}`} disabled={!!operacion} onClick={()=>anularPago(e)}><Minus size={17}/></button>) : <button title={`Registrar ${pesos(cuotaSemanal)} esta semana`} disabled={!!operacion} onClick={()=>registrarPago(e)}><Plus size={18}/></button>}</div>}</article>;})}{!visible.length&&<div className="ag-empty-small">No hay integrantes para este filtro.</div>}</div>
+            <div className="ag-student-list">{visible.map(e=>{const estado=estadoAlumno(e);return <article className="ag-student" key={e.id}><span className="ag-avatar" aria-hidden="true"><UserRound size={22} strokeWidth={2.2}/></span><div className="ag-student-info"><strong title={e.nombre}>{e.nombreVisible}</strong><small>{e.control?`Control ${e.control} · `:''}{etiquetaSemana(periodoId,semana)}</small></div><span className={`ag-status ag-status-${estado}`}>{estado==='pagado'?<><Check size={14}/> Pagó</>:estado==='pendiente'?(esAnterior?'Sin registrar':'Pendiente'):'Sin desglose'}</span>{esAdmin&&vigenteParaRegistrar&&!vacacionesActivas&&!periodo?.meta?.cerradoEn&&<div className="ag-pay-actions">{estado==='pagado' ? (esAnterior&&esPagoLegado(pagosLegado,e.id,semana) ? <span title="Pago legado conservado; no se puede modificar aquí"><LockKeyhole size={18}/></span> : <button title="Anular pago registrado por error (requiere motivo y conserva el historial)" aria-label={`Anular aporte de ${e.nombreVisible} en ${etiquetaSemana(periodoId,semana)}`} disabled={!!operacion} onClick={()=>anularPago(e)}><Minus size={17}/></button>) : <button title={`Registrar ${pesos(cuotaSemanal)} esta semana`} disabled={!!operacion} onClick={()=>registrarPago(e)}><Plus size={18}/></button>}</div>}</article>;})}{!visible.length&&<div className="ag-empty-small">No hay integrantes para este filtro.</div>}</div>
             <div className="ag-list-foot">{vigenteParaRegistrar?`${pagaron} pagos registrados · ${pendientes} ${esAnterior?'sin registrar (no son adeudos automáticos)':'pendientes de esta semana'}`:'Sin desglose semanal para esta selección'}</div>
           </Panel>}
           {esCorteEnSalon&&datos?.meta&&<Panel title="Pagos históricos anteriores al reinicio" icon={History}>
