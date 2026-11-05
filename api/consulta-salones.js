@@ -31,7 +31,7 @@ export default async function handler(req,res){
     if(periodo==='2026-2027-A'&&!corteActivo(periodos))
       return res.status(409).json({error:'El ahorro nuevo aún no está activado; no se mostrarán saldos históricos como actuales.'});
     const resumen=corteActivo(periodos)
-      ?resumirAhorroReiniciado(aulas,periodos)
+      ?resumirAhorroReiniciado(aulas,periodos,(await db.ref('ahorro/ingresosExtras').get()).val()||{})
       :resumirFondos(aulas,(await db.ref('ahorro/integrantes').get()).val()||{});
     return res.status(200).json(informeCompartidoDeSalones({aulas,periodos,periodo,resumen}));
   }catch(error){
