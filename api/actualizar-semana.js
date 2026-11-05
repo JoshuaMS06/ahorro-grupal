@@ -1,6 +1,7 @@
 import { sign } from 'node:crypto';
 import { ZONA_HORARIA_AHORRO } from '../lib/semanaAutomatica.js';
 import { semanaPeriodo } from '../lib/aulas.js';
+import { numeroSemanaVisible } from '../lib/semanaPresentacion.js';
 import { seleccionarCicloActivo } from '../lib/vacaciones.js';
 
 // Función privada de Vercel: únicamente modifica ahorro/semana.
@@ -61,7 +62,8 @@ export default async function handler(req, res) {
     const lista = await fetch(`${DATABASE_URL}/periodos.json`, { headers: encabezados, cache: 'no-store' });
     if (!lista.ok) throw new Error(`No se pudieron consultar los ciclos: HTTP ${lista.status}`);
     const {id:periodoId,meta} = seleccionarCicloActivo(await lista.json());
-    const semana = semanaPeriodo(meta);
+    const semanaInterna = semanaPeriodo(meta);
+    const semana = numeroSemanaVisible(periodoId,semanaInterna);
     const vacacionesActivas = meta.vacaciones?.activas===true;
     const ruta = `${DATABASE_URL}/ahorro/semana.json`;
     // Solo se modifica el nodo semana; jamás se sobreescriben integrantes o pagos.
