@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {semanaPeriodo,pagoClave} from '../lib/aulas.js';
-import {etiquetaSemana,numeroSemanaVisible} from '../lib/semanaPresentacion.js';
+import {etiquetaSemana,numeroSemanaVisible,textoConfirmacionRestaurarPago} from '../lib/semanaPresentacion.js';
 import {semanaActualMexico} from '../lib/semanaAutomatica.js';
 const meta={lunesBase:'2026-10-19',semanaBase:4};
 test('lunes 2 de noviembre es semana 4 para todos, el siguiente lunes semana 5',()=>{
@@ -22,4 +22,16 @@ test('semana 4 operativa conserva la clave de pago interna, sin reescribir impor
  assert.equal(etiquetaSemana('2026-2027-A',5),'Semana 3');
  assert.equal(etiquetaSemana('2026-2027-A',3),'Histórica 3');
  assert.equal(etiquetaSemana('2026-2027-B',3),'Semana 3');
+});
+
+test('confirmación del pago restaurado muestra Semana 4 aunque su ID interno sea 6',()=>{
+ const aviso=textoConfirmacionRestaurarPago('2026-2027-A',6,'Alumno de prueba');
+ assert.match(aviso,/Alumno de prueba \(Semana 4\)/);
+ assert.doesNotMatch(aviso,/Semana 6|semana 6|Motivo/);
+ assert.match(aviso,/historial/);
+ assert.equal(aviso.includes('\n\n'),true);
+});
+test('confirmación de restauración avanza a Semana 5 el siguiente lunes y respeta otro ciclo',()=>{
+ assert.match(textoConfirmacionRestaurarPago('2026-2027-A',7,'Alumno'),/Semana 5/);
+ assert.match(textoConfirmacionRestaurarPago('2026-2027-B',6,'Alumno'),/Semana 6/);
 });
