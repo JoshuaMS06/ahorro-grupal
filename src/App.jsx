@@ -17,6 +17,7 @@ import { nombreParaMostrar, normalizarBusquedaNombre } from '../lib/nombres.js';
 import { esResponsableDeSalon } from '../lib/roles.js';
 import { distribucionNueva, generacionDeAula, resumirFondos } from '../lib/fondos.js';
 import { informeVisibleSegunRol } from '../lib/informeRoles.js';
+import {listarAvisosCarrera} from '../lib/avisosCarrera.js';
 import { periodoSiguiente, salonSiguiente } from '../lib/semestres.js';
 import { prepararExcel, revisarCoincidencias } from '../lib/importarExcel.js';
 import { aplicarVacaciones, esConfirmacionValida } from '../lib/vacaciones.js';
@@ -118,6 +119,7 @@ export default function App() {
   const [importInfo,setImportInfo]=useState(null);
   const [importFile,setImportFile]=useState(null);
   const [retiro,setRetiro]=useState({monto:'',fondo:'grupo'});
+  const [montoExtra,setMontoExtra]=useState('');
   const [estadoReporteFondos,setReporteFondos]=useState(null);
   const [estadoReporteError,setReporteError]=useState(null);
   const [notificaciones,setNotificaciones]=useState(typeof Notification!=='undefined' && Notification.permission==='granted');
@@ -293,7 +295,11 @@ export default function App() {
   const resumenAnterior=resumenPagosAnteriores(pagosAnteriores);
   const retiros=useMemo(()=>datos?.[nodoRetiros]||{},[datos,nodoRetiros]);
   const mensajesRetiro=useMemo(()=>Object.entries(retiros).map(([id,r])=>({id,...r})).sort((a,b)=>(b.creadoEn||0)-(a.creadoEn||0)),[retiros]);
-  const avisosVisibles=useMemo(()=>mensajesRetiro.filter(r=>r.fondo==='carrera'||!r.fondo||(generacionId==='gen-2026-2027-A-507'&&r.fondo==='grupo')),[mensajesRetiro,generacionId]);
+  const avisosGlobales=useMemo(()=>listarAvisosCarrera(periodo?.meta?.avisosCarrera||{}),[periodo?.meta?.avisosCarrera]);
+  const avisosVisibles=useMemo(()=>mensajesRetiro.filter(r=>
+    r.fondo==='grupo'||r.estado==='solicitado'||r.estado==='rechazado'
+    ||!avisosGlobales.some(a=>a.id===`${salonId}_${r.id}`)
+  ),[mensajesRetiro,avisosGlobales,salonId]);
   useEffect(()=>{
     if(!tieneAcceso||!usuario)return;
     let ignorar=false;
@@ -351,16 +357,20 @@ export default function App() {
   }).sort((a,b)=>(b.creadoEn||0)-(a.creadoEn||0));
 
   useEffect(()=>{
-    const events=avisosVisibles.map(r=>`${r.id}:${r.estado}`).sort();
-    const current=events.join('|');
-    if(primerEvento.current===null){primerEvento.current=current;return;}
-    if(primerEvento.current!==current && notificaciones && typeof Notification!=='undefined' && Notification.permission==='granted'){
-      const ultimo=avisosVisibles[0];
-      if(ultimo){try {new Notification('Ahorro Grupal · Movimiento de caja',{body:`Retiro ${ultimo.estado}: ${pesos(ultimo.monto)} · ${ultimo.motivo}` ,icon:'/icons/cerdito-192.png'});}catch{/* navegador no admite aviso */}}
-    }
-    primerEvento.current=current;
-  },[avisosVisibles,notificaciones]);
-  useEffect(()=>{primerEvento.current=null;},[periodoId,salonId]);
+    const actual=avisosGlobales.map(a=>a.id).join('|');
+    const anterior=primerEvento.current;
+    primerEvento.current=actual;
+    if(anterior===null||!notificaciones||typeof Notification==='undefined'||Notification.permission!=='granted')return;
+    const idsPrevios=new Set(anterior.split('|').filter(Boolean));
+    const nuevo=avisosGlobales.find(a=>!idsPrevios.has(a.id));
+    if(nuevo)try{
+      new Notification('Ahorro Grupal · Retiro de Industrial',{
+        body:`Se retiraron ${pesos(nuevo.monto)} del fondo común. El saldo ya está actualizado.`,
+        icon:'/icons/cerdito-192.png'
+      });
+    }catch{/* El navegador no admite la notificación. El aviso queda en la app. */}
+  },[avisosGlobales,notificaciones]);
+  useEffect(()=>{primerEvento.current=null;},[periodoId]);
 
   const withOperation=async(label,fn)=>{
     if(operacion)return;
