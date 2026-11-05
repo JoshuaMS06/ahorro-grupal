@@ -3,6 +3,8 @@ import {resumirFondos} from '../lib/fondos.js';
 import {corteActivo,rutaRetiros,resumirAhorroReiniciado} from '../lib/reinicioContable.js';
 import {atenderCorreccionPago} from '../lib/apiCorreccionPago.js';
 import {atenderRetiroDirecto} from '../lib/apiRetiroDirecto.js';
+import {atenderIngresoExtra} from '../lib/apiIngresoExtra.js';
+import {publicarAvisoRetiro} from '../lib/avisosCarrera.js';
 
 export default async function handler(req,res){
   res.setHeader('Cache-Control','no-store');
@@ -12,6 +14,7 @@ export default async function handler(req,res){
   // máximo de funciones. Los retiros mantienen sus permisos generales.
   if(req.body?.operacion==='correccionPago')return atenderCorreccionPago(req,res);
   if(req.body?.operacion==='retiroDirecto')return atenderRetiroDirecto(req,res);
+  if(req.body?.operacion==='ingresoExtra')return atenderIngresoExtra(req,res);
   const {periodo,salon,retiroId,estado}=req.body||{};
   if(typeof periodo!=='string'||!/^\d{4}-\d{4}-[A-Z0-9]{1,5}$/.test(periodo)||
      typeof salon!=='string'||!/^[A-Za-z0-9_-]{1,24}$/.test(salon)||
@@ -26,6 +29,7 @@ export default async function handler(req,res){
     const periodos=(await db.ref('periodos').get()).val()||{};
     if(periodo==='2026-2027-A'&&!corteActivo(periodos))return res.status(409).json({error:'Reinicio contable pendiente de activar.'});
     const legacy=corteActivo(periodos)?{}:(await db.ref('ahorro/integrantes').get()).val()||{};
+    const extras=corteActivo(periodos)?((await db.ref('ahorro/ingresosExtras').get()).val()||{}):{};
     // La transacción sobre TODAS las aulas evita aprobar dos retiros simultáneos
     // contra el saldo de carrera, incluso desde salones distintos.
     let motivoBloqueo='La solicitud ya cambió o no existe saldo suficiente.';
@@ -39,7 +43,7 @@ export default async function handler(req,res){
         motivoBloqueo='Este retiro anterior requiere conciliación manual; no se cambiará su origen automáticamente.';return;
       }
       if(estado==='aprobado'){
-        const resumen=corteActivo(periodos)?resumirAhorroReiniciado(aulas,periodos):resumirFondos(aulas,legacy);
+        const resumen=corteActivo(periodos)?resumirAhorroReiniciado(aulas,periodos,extras):resumirFondos(aulas,legacy);
         if(!resumen.cifrasConfiables){motivoBloqueo='Existen retiros previos sin fondo clasificado. Revísalos antes de aprobar.';return;}
         const disponible=resumen.totalCarrera;
         if(disponible<solicitud.monto||disponible<0)return;
@@ -48,7 +52,16 @@ export default async function handler(req,res){
       return aulas;
     },undefined,false);
     if(!tx.committed)return res.status(409).json({error:motivoBloqueo});
-    return res.status(200).json({ok:true,estado});
+    let avisoPublicado=false;
+    if(estado==='aprobado'){
+      try{
+        const guardado=tx.snapshot.val()?.[periodo]?.[salon]?.[rutaRetiros(periodos,periodo)]?.[retiroId];
+        await publicarAvisoRetiro(db,{periodo,salon,retiroId,monto:guardado.monto,
+          fecha:guardado.respondidoEn||Date.now()});
+        avisoPublicado=true;
+      }catch(error){console.error('Retiro legado aprobado, aviso pendiente:',error?.code||'error');}
+    }
+    return res.status(200).json({ok:true,estado,avisoPublicado});
   }catch(error){
     console.error('No se pudo resolver el retiro:',error?.code||error?.message||'error');
     return res.status(500).json({error:'No se pudo completar la operación. Consulta los registros en Vercel.'});
