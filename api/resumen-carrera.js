@@ -35,7 +35,7 @@ export default async function handler(req,res){
     if(periodo==='2026-2027-A'&&!corteActivo(periodos))
       return res.status(409).json({error:'El saldo nuevo aún no está activado. No se mostrará el saldo histórico como actual.'});
     const resumen=corteActivo(periodos)
-      ?resumirAhorroReiniciado(aulas,periodos)
+      ?resumirAhorroReiniciado(aulas,periodos,(await db.ref('ahorro/ingresosExtras').get()).val()||{})
       :resumirFondos(aulas,(await db.ref('ahorro/integrantes').get()).val()||{});
     const generacionId=generacionDeAula(periodo,salon,objetivo.meta);
     // Solo se entrega el saldo de la carrera; los registros históricos sin conciliar quedan fuera de la respuesta.
