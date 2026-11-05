@@ -654,7 +654,7 @@ export default function App() {
       const body=await respuesta.json().catch(()=>({}));
       if(!respuesta.ok)throw Error(body.error||`No pudo realizarse el retiro (HTTP ${respuesta.status}).`);
       setRetiro({monto:'',fondo:retiro.fondo});
-      return `Retiro de ${pesos(monto)} realizado y descontado. El comprobante quedó en el historial de tu salón.`;
+      return `Retiro de ${pesos(monto)} realizado y descontado. El comprobante quedó en el historial de tu salón.${fondo==='carrera'&&body.avisoPublicado===false?' El aviso a los demás salones no se pudo difundir; el descuento sí quedó registrado.':''}`;
     });
   };
   const resolverRetiro=async(r,estado)=>{
@@ -673,7 +673,7 @@ export default function App() {
       });
       const body=await response.json().catch(()=>({}));
       if(!response.ok)throw Error(body.error || `No se pudo resolver el retiro (HTTP ${response.status}).`);
-      return `Retiro ${estado}. ${estado==='aprobado'?'El saldo se actualizó automáticamente.':'No se descontó dinero.'}`;
+      return `Retiro ${estado}. ${estado==='aprobado'?'El saldo se actualizó automáticamente.':'No se descontó dinero.'}${estado==='aprobado'&&body.avisoPublicado===false?' El aviso compartido no se pudo publicar.':''}`;
     });
   };
   const controlarVacaciones=async accion=>{
