@@ -127,6 +127,7 @@ export default function App() {
   const [modalInstalar,setModalInstalar]=useState(false);
   const [instalada,setInstalada]=useState(()=>window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone===true);
   const primerEvento=useRef(null);
+  const inicioEscuchaAvisos=useRef(Date.now());
   const intentoIngresoExtra=useRef(null);
   const esAdminGeneral=Boolean(usuario && uidAdminGeneral && uidAdminGeneral===usuario.uid);
   const esResponsable=Boolean(usuario && !esAdminGeneral && esResponsableDeSalon(asignacion,periodoId,salonId));
@@ -364,7 +365,7 @@ export default function App() {
     if(anterior===null||!notificaciones||typeof Notification==='undefined'||Notification.permission!=='granted')return;
     const idsPrevios=new Set(anterior.split('|').filter(Boolean));
     const nuevo=avisosGlobales.find(a=>!idsPrevios.has(a.id));
-    if(nuevo)try{
+    if(nuevo && nuevo.fecha>=inicioEscuchaAvisos.current)try{
       new Notification('Ahorro Grupal · Retiro de Industrial',{
         body:`Se retiraron ${pesos(nuevo.monto)} del fondo común. El saldo ya está actualizado.`,
         icon:'/icons/cerdito-192.png'
