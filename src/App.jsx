@@ -9,6 +9,7 @@ import {
   AlertTriangle, GraduationCap, ArrowDownRight, Eye, EyeOff, LayoutDashboard, UserCog, FileSpreadsheet, PauseCircle, PlayCircle,
 } from 'lucide-react';
 import { cuotaDeSalon, esLunes, estadoSemana, fechaMexico, isClassCode, isPeriodId, pagoClave, semanaPeriodo } from '../lib/aulas.js';
+import {etiquetaSemana,numeroSemanaVisible} from '../lib/semanaPresentacion.js';
 import {corteActivo, esPeriodoReinicio, rutaPagos, rutaRetiros, inicioAportaciones, resumirAhorroReiniciado} from '../lib/reinicioContable.js';
 import {esSemanaAnterior, rutaPagoSeleccionado, primeraSemanaVisible, esPagoLegado, resumenPagosAnteriores} from '../lib/pagosAnteriores.js';
 import {PROFESORES, CUOTA_PROFESOR, claveSemanaProfesor, resumenAcumuladoProfesor, crearPagoProfesor, esPagoProfesorAnterior} from '../lib/profesoresAhorro.js';
@@ -116,7 +117,7 @@ export default function App() {
   const [nuevoEstudiante,setNuevoEstudiante]=useState({nombre:'',control:''});
   const [importInfo,setImportInfo]=useState(null);
   const [importFile,setImportFile]=useState(null);
-  const [retiro,setRetiro]=useState({monto:'',motivo:''});
+  const [retiro,setRetiro]=useState({monto:'',fondo:'grupo'});
   const [estadoReporteFondos,setReporteFondos]=useState(null);
   const [estadoReporteError,setReporteError]=useState(null);
   const [notificaciones,setNotificaciones]=useState(typeof Notification!=='undefined' && Notification.permission==='granted');
@@ -271,6 +272,7 @@ export default function App() {
   const salones=Object.keys(periodo?.salones||{}).filter(id=>esAdminGeneral || (asignacion?.periodo===periodoId && asignacion?.salon===id) || (asignacionLector?.periodo===periodoId && asignacionLector?.salon===id) || (sesionCodigo?.periodo===periodoId && sesionCodigo?.salon===id)).sort((a,b)=>a.localeCompare(b,'es',{numeric:true}));
   const vacacionesActivas=periodo?.meta?.vacaciones?.activas===true;
   const semanaActual=semanaPeriodo(periodo?.meta,fecha);
+  const semanaActualMostrada=numeroSemanaVisible(periodoId,semanaActual);
   const semanaMinima=primeraSemanaVisible(periodos,periodoId,periodo?.meta,datos?.meta);
   const semana=Math.max(semanaMinima,Math.min(semanaElegida||semanaActual,semanaActual));
   const cuotaSemanal=cuotaDeSalon(salonId,datos?.meta);
@@ -291,7 +293,7 @@ export default function App() {
   const resumenAnterior=resumenPagosAnteriores(pagosAnteriores);
   const retiros=useMemo(()=>datos?.[nodoRetiros]||{},[datos,nodoRetiros]);
   const mensajesRetiro=useMemo(()=>Object.entries(retiros).map(([id,r])=>({id,...r})).sort((a,b)=>(b.creadoEn||0)-(a.creadoEn||0)),[retiros]);
-  const avisosVisibles=useMemo(()=>mensajesRetiro.filter(r=>r.fondo==='carrera'||!r.fondo),[mensajesRetiro]);
+  const avisosVisibles=useMemo(()=>mensajesRetiro.filter(r=>r.fondo==='carrera'||!r.fondo||(generacionId==='gen-2026-2027-A-507'&&r.fondo==='grupo')),[mensajesRetiro,generacionId]);
   useEffect(()=>{
     if(!tieneAcceso||!usuario)return;
     let ignorar=false;
@@ -586,13 +588,32 @@ export default function App() {
     });
   };
   const solicitarRetiro=async e=>{
-    e.preventDefault();if(!esAdmin||periodo?.meta?.cerradoEn||(periodoId==='2026-2027-A'&&!ahorroNuevoActivo))return;
-    const valor=Number(retiro.monto);
-    if(!Number.isSafeInteger(valor)||valor<=0||valor>1000000||retiro.motivo.trim().length<6){setToast('Indica un importe entero positivo y un motivo de al menos 6 caracteres.');return;}
+    e.preventDefault();
+    if(!esAdmin||periodo?.meta?.cerradoEn||(periodoId==='2026-2027-A'&&!ahorroNuevoActivo))return;
+    const monto=Number(retiro.monto);
+    const es507=generacionId==='gen-2026-2027-A-507';
+    const fondo=es507&&retiro.fondo==='grupo'?'grupo':'carrera';
+    const disponible=fondo==='grupo'?reporteFondos?.ahorroPropioSalon:reporteFondos?.saldoCarreraSalon;
+    if(!Number.isSafeInteger(monto)||monto<1||monto>1000000){
+      setToast('Escribe un importe en pesos, mayor que cero.');return;
+    }
+    if(!reporteFondos?.cifrasConfiables||!Number.isFinite(disponible)||monto>disponible){
+      setToast('El importe supera el saldo disponible de este salón o el saldo requiere revisión.');return;
+    }
+    if(!window.confirm(`¿Retirar ${pesos(monto)} del ${fondo==='grupo'?'ahorro privado del 507':'fondo de Industrial aportado por tu salón'}?\n\nLa operación descontará el saldo de inmediato y quedará registrada con fecha y responsable.`))return;
     await withOperation('retiro',async()=>{
-      const destino=push(ref(database,`aulas/${periodoId}/${salonId}/${nodoRetiros}`));
-      await set(destino,{monto:valor,motivo:retiro.motivo.trim(),fondo:'carrera',estado:'solicitado',solicitadoPor:usuario.uid,creadoEn:Date.now()});
-      setRetiro({monto:'',motivo:''});return 'Solicitud de retiro publicada; el saldo aún no cambió.';
+      const retiroId=push(ref(database,`aulas/${periodoId}/${salonId}/${nodoRetiros}`)).key;
+      const token=await usuario.getIdToken();
+      const respuesta=await fetch('/api/resolver-retiro',{
+        method:'POST',cache:'no-store',
+        headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+        body:JSON.stringify({operacion:'retiroDirecto',periodo:periodoId,salon:salonId,
+          fondo,monto,retiroId})
+      });
+      const body=await respuesta.json().catch(()=>({}));
+      if(!respuesta.ok)throw Error(body.error||`No pudo realizarse el retiro (HTTP ${respuesta.status}).`);
+      setRetiro({monto:'',fondo:retiro.fondo});
+      return `Retiro de ${pesos(monto)} realizado y descontado. El comprobante quedó en el historial de tu salón.`;
     });
   };
   const resolverRetiro=async(r,estado)=>{
@@ -875,8 +896,27 @@ export default function App() {
             <div className="ag-timeline">{pagosHistAnteriores.slice(0,100).map(p=><div className="ag-timeline-row" key={p.id}><span className={`ag-timeline-mark ${p.estado==='pagado'?'ok':'cancel'}`}>{p.estado==='pagado'?<Check size={16}/>:<X size={16}/>}</span><div><strong>{nombreParaMostrar(integrantes[p.estudianteId]?.nombre||p.nombre||'Integrante',p.estudianteId,integrantes[p.estudianteId]?.formatoNombre)}</strong><small>Semana {p.semana} · {fechaLarga(p.creadoEn)} {p.estado==='anulado'?'· Anulación':''}{p.motivo?` · ${p.motivo}`:''}</small></div><b>{p.estado==='pagado'?'+':'−'}{pesos(p.monto)}</b></div>)}{!pagosHistAnteriores.length&&<p className="ag-muted">No hay capturas históricas nuevas. Los registros originales anteriores al reinicio permanecen intactos.</p>}</div>
           </Panel>}
           {datos?.meta&&<Panel title="Historial de aportaciones" icon={History}><p className="ag-muted">Movimientos del nuevo ahorro. Los registros anteriores permanecen respaldados y no se suman.</p><div className="ag-timeline">{pagosHist.slice(0,100).map(p=><div className="ag-timeline-row" key={p.id}><span className={`ag-timeline-mark ${p.estado==='pagado'?'ok':'cancel'}`}>{p.estado==='pagado'?<Check size={16}/>:<X size={16}/>}</span><div><strong title={p.nombre||integrantes[p.estudianteId]?.nombre||''}>{nombreParaMostrar(integrantes[p.estudianteId]?.nombre||p.nombre||'Integrante',p.estudianteId,integrantes[p.estudianteId]?.formatoNombre)}</strong><small>Semana {p.semana} · {fechaLarga(p.creadoEn)} {p.estado==='anulado'?'· Anulación':''}{p.motivo?` · ${p.motivo}`:''}</small></div><b>{p.estado==='pagado'?'+':'−'}{pesos(p.monto)}</b></div>)}{!pagosHist.length&&<p className="ag-muted">Todavía no hay pagos semanales detallados para este salón.</p>}</div></Panel>}
-        {esAdmin&&!periodo?.meta?.cerradoEn&&datos?.meta&&(periodoId!=='2026-2027-A'||ahorroNuevoActivo)&&<Panel title="Solicitar retiro de la caja" icon={ArrowDownRight}><form className="ag-simple-form" onSubmit={solicitarRetiro}><label>Importe en pesos<input type="number" min="1" step="1" value={retiro.monto} onChange={e=>setRetiro({...retiro,monto:e.target.value})} placeholder="Ej. 200" required/></label><label>Motivo<input value={retiro.motivo} onChange={e=>setRetiro({...retiro,motivo:e.target.value})} placeholder="¿Para qué se solicita?" minLength={6} required/></label><SmallButton type="submit" variant="primary" disabled={!!operacion}><Plus size={17}/> Publicar solicitud</SmallButton></form><p className="ag-muted">Solicitar no descuenta dinero. El saldo se actualiza cuando se aprueba la solicitud.</p></Panel>}
-        <Panel title="Avisos de movimientos y retiros" icon={BellRing} action={<SmallButton onClick={permitirAvisos}><Bell size={16}/> Permitir avisos</SmallButton>}><p className="ag-muted">Solicitudes y retiros correspondientes a la carrera. Los avisos del dispositivo funcionan mientras la aplicación está abierta.</p>{!datos?.meta?<div className="ag-empty-small">Selecciona un salón configurado.</div>:<div className="ag-timeline">{avisosVisibles.map(r=><div key={r.id} className="ag-withdrawal"><div className="ag-withdrawal-head"><span className={`ag-status ag-status-${r.estado}`}>{r.estado==='solicitado'?'Solicitud de retiro':r.estado==='aprobado'?'Retiro aprobado':'Solicitud rechazada'}</span><strong>{pesos(r.monto)}</strong></div><p>{r.motivo}</p><small>{fechaLarga(r.creadoEn)} {r.respondidoEn?`· Resuelto ${fechaLarga(r.respondidoEn)}`:''}</small>{esAdminGeneral&&r.fondo==='carrera'&&!periodo?.meta?.cerradoEn&&r.estado==='solicitado'&&<div className="ag-withdrawal-buttons"><SmallButton disabled={!!operacion} onClick={()=>resolverRetiro(r,'aprobado')} variant="primary"><Check size={16}/> Aprobar y descontar</SmallButton><SmallButton disabled={!!operacion} onClick={()=>resolverRetiro(r,'rechazado')}>Rechazar</SmallButton></div>}</div>)}{!avisosVisibles.length&&<p className="ag-muted">No existen avisos de retiro para este salón.</p>}</div>}</Panel></>}
+        {esAdmin&&!periodo?.meta?.cerradoEn&&datos?.meta&&(periodoId!=='2026-2027-A'||ahorroNuevoActivo)&&<Panel title="Retirar ahorro de mi salón" icon={ArrowDownRight}>
+           <p className="ag-muted">Retira directamente, sin escribir una justificación y sin esperar aprobación. Solo puedes retirar dinero disponible de tu propio grupo; el movimiento quedará registrado con fecha, importe y responsable.</p>
+           <form className="ag-simple-form" onSubmit={solicitarRetiro}>
+             {generacionId==='gen-2026-2027-A-507'&&<label>¿De qué fondo quieres retirar?
+               <select value={retiro.fondo} onChange={e=>setRetiro({...retiro,fondo:e.target.value})}>
+                 <option value="grupo">Ahorro privado del 507</option>
+                 <option value="carrera">Aportación a Industrial</option>
+               </select>
+             </label>}
+             <label>Saldo disponible de mi salón
+               <input readOnly value={!reporteFondos?.cifrasConfiables?'Por consultar':pesos(generacionId==='gen-2026-2027-A-507'&&retiro.fondo==='grupo'?reporteFondos.ahorroPropioSalon:reporteFondos.saldoCarreraSalon)}/>
+             </label>
+             <label>Importe a retirar (pesos)
+               <input type="number" min="1" max="1000000" step="1" value={retiro.monto}
+                 onChange={e=>setRetiro({...retiro,monto:e.target.value})} placeholder="Ej. 200" required/>
+             </label>
+             <SmallButton type="submit" variant="primary" disabled={!!operacion||!reporteFondos?.cifrasConfiables}><ArrowDownRight size={17}/> Retirar y descontar</SmallButton>
+           </form>
+           <p className="ag-muted">Confirmarás el importe antes del descuento. El retiro queda en el historial y no cambia pagos anteriores.</p>
+         </Panel>}
+        <Panel title="Avisos de movimientos y retiros" icon={BellRing} action={<SmallButton onClick={permitirAvisos}><Bell size={16}/> Permitir avisos</SmallButton>}><p className="ag-muted">Solicitudes y retiros correspondientes a la carrera. Los avisos del dispositivo funcionan mientras la aplicación está abierta.</p>{!datos?.meta?<div className="ag-empty-small">Selecciona un salón configurado.</div>:<div className="ag-timeline">{avisosVisibles.map(r=><div key={r.id} className="ag-withdrawal"><div className="ag-withdrawal-head"><span className={`ag-status ag-status-${r.estado}`}>{r.estado==='solicitado'?'Solicitud de retiro':r.estado==='aprobado'?(r.tipo==='directo'?'Retiro realizado':'Retiro aprobado'):'Solicitud rechazada'}</span><strong>{pesos(r.monto)}</strong></div>{r.motivo&&r.motivo!=='Retiro directo'&&<p>{r.motivo}</p>}<small>{fechaLarga(r.creadoEn)} {r.respondidoEn?`· Resuelto ${fechaLarga(r.respondidoEn)}`:''}</small>{esAdminGeneral&&r.fondo==='carrera'&&!periodo?.meta?.cerradoEn&&r.estado==='solicitado'&&<div className="ag-withdrawal-buttons"><SmallButton disabled={!!operacion} onClick={()=>resolverRetiro(r,'aprobado')} variant="primary"><Check size={16}/> Aprobar y descontar</SmallButton><SmallButton disabled={!!operacion} onClick={()=>resolverRetiro(r,'rechazado')}>Rechazar</SmallButton></div>}</div>)}{!avisosVisibles.length&&<p className="ag-muted">No existen avisos de retiro para este salón.</p>}</div>}</Panel></>}
         {vistaActiva==='consulta'&&esAdmin&&<Panel title="Aportaciones de los salones a la carrera" icon={UsersRound}>
           <ConsultaSalones usuario={usuario} periodoId={periodoId} salonActual={salonId}/>
         </Panel>}
@@ -886,7 +926,7 @@ export default function App() {
         </>}
         {vistaActiva==='roles' && esAdminGeneral && <Panel title="Responsables de los salones" icon={ShieldCheck}>
           <p className="ag-muted">Crea responsables con su nombre y correo. Firebase les envía un mensaje para que establezcan su contraseña. No necesitas copiar identificadores ni entrar a Firebase. Los accesos avanzan automáticamente con su generación al cambiar de semestre.</p>
-          <p className="ag-note">Máximo dos responsables por salón. Solo pueden registrar aportaciones y solicitar retiros de su salón. Las bajas de permisos no borran pagos ni alumnos.</p>
+          <p className="ag-note">Máximo dos responsables por salón. Solo pueden registrar aportaciones y retirar fondos disponibles de su salón. Las bajas de permisos no borran pagos ni alumnos.</p>
           {errorResponsables&&<div className="ag-error">{errorResponsables}</div>}
           <div className="ag-role-period"><h3>Semestre activo: {periodos[periodoId]?.meta?.nombre||periodoId}</h3>
             {Object.keys(periodos[periodoId]?.salones||{}).sort((a,b)=>a.localeCompare(b,'es',{numeric:true})).map(s=><div className="ag-role-room" key={`${periodoId}-${s}`}><h4>Salón {s}</h4>
