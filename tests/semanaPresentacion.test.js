@@ -60,7 +60,7 @@ test('una fecha visible NO altera la llave ni el importe de un pago existente',(
  const semanaInterna=semanaPeriodo(meta,fecha('2026-11-04'));
  assert.equal(semanaInterna,6);
  assert.equal(pagoClave('e001',semanaInterna),'e001_s0006');
- assert.equal(etiquetaSemana(period,semanaInterna,meta),'Semana 1 de noviembre');
+ assert.equal(etiquetaSemana(periodo,semanaInterna,meta),'Semana 1 de noviembre');
  const aviso=textoConfirmacionRestaurarPago(periodo,semanaInterna,'Alumno de prueba',meta);
  assert.match(aviso,/Alumno de prueba \(Semana 1 de noviembre\)/);
  assert.doesNotMatch(aviso,/Histórica|Semana 6/);
