@@ -18,6 +18,8 @@ import { esResponsableDeSalon } from '../lib/roles.js';
 import { distribucionNueva, generacionDeAula, resumirFondos } from '../lib/fondos.js';
 import { informeVisibleSegunRol } from '../lib/informeRoles.js';
 import {listarAvisosCarrera} from '../lib/avisosCarrera.js';
+import {claveRegistroPersonal,leerRegistrosFijados,fijarRegistroPersonal} from '../lib/registroPersonal.js';
+import MiRegistro from './MiRegistro.jsx';
 import { periodoSiguiente, salonSiguiente } from '../lib/semestres.js';
 import { prepararExcel, revisarCoincidencias } from '../lib/importarExcel.js';
 import { aplicarVacaciones, esConfirmacionValida } from '../lib/vacaciones.js';
@@ -106,6 +108,7 @@ export default function App() {
   const [toast,setToast]=useState('');
   const [search,setSearch]=useState('');
   const [filtro,setFiltro]=useState('todos');
+  const [registrosFijados,setRegistrosFijados]=useState(()=>leerRegistrosFijados(window.localStorage));
   const [vista,setVista]=useState('panel');
   const [fecha,setFecha]=useState(()=>Date.now());
   const [semanaElegida,setSemanaElegida]=useState(0);
@@ -286,6 +289,18 @@ export default function App() {
   const generacionId=generacionDeAula(periodoId,salonId,datos?.meta);
   const integrantes=useMemo(()=>datos?.integrantes||{},[datos]);
   const lista=useMemo(()=>Object.entries(integrantes).map(([id,v])=>({id,...v,nombreVisible:nombreParaMostrar(v.nombre,id,v.formatoNombre)})).sort((a,b)=> a.nombreVisible.localeCompare(b.nombreVisible,'es',{sensitivity:'base'}) || a.nombre.localeCompare(b.nombre,'es') || a.id.localeCompare(b.id)),[integrantes]);
+  const registroFijado=registrosFijados[claveRegistroPersonal(periodoId,salonId)]||null;
+  const guardarRegistroFijado=id=>setRegistrosFijados(previo=>
+    fijarRegistroPersonal(previo,periodoId,salonId,id,window.localStorage));
+  const estadoMiRegistro=e=>{
+    const historica=esSemanaAnterior(periodos,periodoId,semanaActual);
+    const inicio=inicioAportaciones(periodos,periodoId,datos?.meta);
+    if((!historica&&semanaActual<inicio)||(periodoId==='2026-2027-A'&&!corteActivo(periodos)))
+      return 'sin-dato';
+    const pagosActuales=datos?.[rutaPagoSeleccionado(periodos,periodoId,semanaActual)]||{};
+    if(historica&&esPagoLegado(datos?.pagos||{},e.id,semanaActual))return 'pagado';
+    return estadoSemana(pagosActuales,e.id,semanaActual);
+  };
   const ahorroNuevoActivo=corteActivo(periodos);
   const esCorteEnSalon=esPeriodoReinicio(periodos,periodoId);
   const nodoPagos=rutaPagos(periodos,periodoId);
@@ -348,7 +363,8 @@ export default function App() {
   const pagaron=detalleSemana.filter(e=>estadoAlumno(e)==='pagado').length;
   const pendientes=detalleSemana.filter(e=>estadoAlumno(e)==='pendiente').length;
   const consulta=normalizarBusquedaNombre(search.trim());
-  const visible=detalleSemana.filter(e=> !consulta || normalizarBusquedaNombre([e.nombreVisible,e.nombre,e.aliasLegado,e.control].join(' ')).includes(consulta)).filter(e=>filtro==='todos'||estadoAlumno(e)===filtro);
+  const visible=detalleSemana.filter(e=>!consulta||normalizarBusquedaNombre([e.nombreVisible,e.nombre,e.aliasLegado,e.control].join(' ')).includes(consulta)).filter(e=>filtro==='todos'||estadoAlumno(e)===filtro)
+    .sort((a,b)=>!esAdmin&&registroFijado?(a.id===registroFijado?-1:b.id===registroFijado?1:0):0);
   const pagosHist=Object.entries(pagos).flatMap(([id,p])=>{
     if(!p?.estudianteId)return [];
     const eventos=Object.entries(p.historial||{});
@@ -864,16 +880,19 @@ export default function App() {
       {!tieneAcceso ? <AccesoSalon abrirLogin={()=>setLoginOpen(true)} ingresarConCodigo={ingresarConCodigo}
         ocupado={!!operacion} error={errorAcceso} modoDemo={usarEmuladores}/> : <main className="ag-main">
         {dbError&&<div className="ag-error"><AlertTriangle size={18}/> {dbError}</div>}
-        <div className="ag-intro"><div><span className="ag-kicker">{esAdminGeneral?'ADMINISTRACIÓN GENERAL · INGENIERÍA INDUSTRIAL':`SALÓN · ${salonId} · ${periodo?.meta?.nombre||periodoId}`} {periodo?.meta?.cerradoEn?' · CICLO ARCHIVADO':''}</span><h1>{esAdminGeneral?'Panel de administración':'Control de aportaciones'}</h1><p>{esAdminGeneral?'Gestión del fondo de la carrera':esInvitadoCodigo?`Consulta privada del salón · ${pesos(cuotaSemanal)} por semana.`:`Registro de tu salón · ${pesos(cuotaSemanal)} por semana.`}</p></div><div className="ag-week-pill"><CalendarClock size={19}/> Semana {semanaActualMostrada}</div></div>
+        <div className="ag-intro ag-intro-compact"><div><span className="ag-kicker">{esAdminGeneral?'ADMINISTRACIÓN GENERAL':esResponsable?`RESPONSABLE · SALÓN ${salonId}`:`SALÓN ${salonId}`} {periodo?.meta?.cerradoEn?' · CICLO ARCHIVADO':''}</span><h1>{esAdminGeneral?'Panel general':esAdmin?'Registro de pagos':'Mi ahorro grupal'}</h1></div><div className="ag-week-pill"><CalendarClock size={18}/> Semana {semanaActualMostrada}</div></div>
         {vacacionesActivas&&<div className="ag-note"><PauseCircle size={17}/> Vacaciones activas: semana {semanaActualMostrada} congelada. No se registran aportaciones ni nuevas semanas pendientes.</div>}
-        <div className="ag-selectors">
-          <label>Ciclo escolar<select disabled={!esAdminGeneral} value={periodoId} onChange={e=>cambiarPeriodo(e.target.value)}>{periodKeys.length ? periodKeys.map(k=><option key={k} value={k}>{periodos[k]?.meta?.nombre||k}</option>):<option value={defaultPeriod}>Sin listas importadas</option>}</select></label>
-          <label>Salón<select disabled={!esAdminGeneral} value={salonId} onChange={e=>cambiarSalon(e.target.value)}>{salones.length ? salones.map(k=><option key={k} value={k}>{periodo?.salones?.[k]?.nombre||`Salón ${k}`}</option>):<option value="507">Sin salones</option>}</select></label>
-        </div>
-        {avisosGlobales[0]&&<div className="ag-note" role="status">
-          <BellRing size={17}/> Último aviso del fondo general: retiro de <strong>{pesos(avisosGlobales[0].monto)}</strong> de Industrial el {fechaLarga(avisosGlobales[0].fecha)}. Ya se descontó del saldo; no está pendiente.
+        {esAdminGeneral&&<div className="ag-selectors">
+          <label>Ciclo escolar<select value={periodoId} onChange={e=>cambiarPeriodo(e.target.value)}>{periodKeys.length ? periodKeys.map(k=><option key={k} value={k}>{periodos[k]?.meta?.nombre||k}</option>):<option value={defaultPeriod}>Sin listas importadas</option>}</select></label>
+          <label>Salón<select value={salonId} onChange={e=>cambiarSalon(e.target.value)}>{salones.length ? salones.map(k=><option key={k} value={k}>{periodo?.salones?.[k]?.nombre||`Salón ${k}`}</option>):<option value="507">Sin salones</option>}</select></label>
         </div>}
-        <div className="ag-tabs" role="tablist" aria-label="Apartados">{esAdminGeneral&&<button className={vistaActiva==='panel'?'active':''} onClick={()=>setVista('panel')}><LayoutDashboard size={17}/> Inicio</button>}<button className={vistaActiva==='pagos'?'active':''} onClick={()=>setVista('pagos')}><Wallet size={17}/> Aportaciones</button>{esAdmin&&<button className={vistaActiva==='consulta'?'active':''} onClick={()=>setVista('consulta')}><UsersRound size={17}/> Consultar salones</button>}{esAdmin&&<button className={vistaActiva==='profesores'?'active':''} onClick={()=>setVista('profesores')}><GraduationCap size={17}/> Profesores</button>}{esAdmin&&<button className={vistaActiva==='gestion'?'active':''} onClick={()=>setVista('gestion')}><BookOpen size={17}/> Ciclos y salones</button>}{esAdminGeneral&&<button className={vistaActiva==='roles'?'active':''} onClick={()=>setVista('roles')}><ShieldCheck size={17}/> Responsables</button>}{esAdminGeneral&&<button className={vistaActiva==='lectores'?'active':''} onClick={()=>setVista('lectores')}><LockKeyhole size={17}/> Accesos</button>}</div>
+
+        {esAdmin&&<div className="ag-tabs" aria-label="Apartados principales">
+          {esAdminGeneral&&<button className={vistaActiva==='panel'?'active':''} onClick={()=>setVista('panel')}><LayoutDashboard size={17}/> Inicio</button>}
+          <button className={vistaActiva==='pagos'?'active':''} onClick={()=>setVista('pagos')}><Wallet size={17}/> Registrar pagos</button>
+          <button className={vistaActiva==='consulta'?'active':''} onClick={()=>setVista('consulta')}><UsersRound size={17}/> Consultar salones</button>
+
+        </div>}
         {vistaActiva==='panel'&&esAdminGeneral&&<>
           <section className="ag-general-hero" aria-label="Resumen general del ahorro de carrera">
             <div className="ag-general-label"><CircleDollarSign size={22}/> FONDO DE INGENIERÍA INDUSTRIAL</div>
@@ -882,6 +901,9 @@ export default function App() {
             {reporteError&&<div className="ag-error"><AlertTriangle size={17}/>{reporteError}</div>}
             {reporteFondos&&!reporteFondos.cifrasConfiables&&<div className="ag-note"><AlertTriangle size={17}/> Hay retiros antiguos por clasificar. El saldo disponible se oculta hasta conciliarlos.</div>}
           </section>
+          <details className="ag-disclosure ag-extra-disclosure">
+            <summary><span><CircleDollarSign size={19}/> Añadir dinero extra</span><span className="ag-disclosure-hint">Abrir</span></summary>
+            <div className="ag-disclosure-body">
           <Panel title="Añadir dinero extra al fondo general" icon={CircleDollarSign}>
             <p className="ag-muted">Agrega directamente un importe a Industrial, sin seleccionar alumnos o salones ni escribir motivos. El extra aumenta el fondo general y no modifica las aportaciones de los grupos.</p>
             <form className="ag-simple-form" onSubmit={ingresarExtraGeneral}>
@@ -895,6 +917,8 @@ export default function App() {
             </form>
             <p className="ag-muted">Ingresos extra acumulados: <strong>{reporteFondos?pesos(reporteFondos.extraIngresado||0):'—'}</strong>. Los movimientos se respaldan de forma privada para mantener los cálculos correctos.</p>
           </Panel>
+            </div>
+          </details>
           <section className="ag-general-metrics" aria-label="Resumen del ciclo">
             <div><UsersRound size={22}/><strong>{Object.keys(periodo?.salones||{}).length}</strong><span>Salones del ciclo</span></div>
             <div><UserCog size={22}/><strong>{Object.values(responsables?.[periodoId]||{}).reduce((n,p)=>n+Object.values(p||{}).filter(Boolean).length,0)}</strong><span>Responsables asignados</span></div>
@@ -910,6 +934,34 @@ export default function App() {
           </Panel>
         </>}
         {vistaActiva==='pagos'&&<>
+          {!esAdmin&&<MiRegistro salon={salonId} semana={semanaActualMostrada} lista={lista}
+            seleccionado={registroFijado} pagos={pagos} estado={estadoMiRegistro} guardar={guardarRegistroFijado}/>}
+          {esAdmin&&<section className="ag-week-glance" aria-label="Avance semanal">
+            <div className="ag-week-glance-heading"><span><CalendarClock size={18}/> {etiquetaSemana(periodoId,semana)}</span><strong>{cargando?'—':lista.length} estudiantes</strong></div>
+            <div className="ag-week-glance-numbers">
+              <div><strong>{vigenteParaRegistrar?pagaron:'—'}</strong><span>Pagaron</span></div>
+              <div><strong>{vigenteParaRegistrar?pendientes:'—'}</strong><span>Pendientes</span></div>
+              <div><strong>{pesos(cuotaSemanal)}</strong><span>Por semana</span></div>
+            </div>
+            <div className="ag-week-glance-bar" aria-hidden="true"><div style={{width:`${lista.length&&vigenteParaRegistrar?Math.min(100,Math.round((pagaron/lista.length)*100)):0}%`}}/></div>
+          </section>}
+          {reporteError&&<div className="ag-error" role="alert"><AlertTriangle size={18}/>{reporteError}</div>}
+          {reporteFondos&&!reporteFondos.cifrasConfiables&&<div className="ag-error"><AlertTriangle size={18}/> Existen retiros que necesitan conciliación antes de utilizar estos saldos.</div>}
+          {generacionId==='gen-2026-2027-A-507'&&reporteFondos?.conciliacion507&&!reporteFondos.conciliacion507.conciliado&&<div className="ag-error"><AlertTriangle size={18}/> Revisa el reparto de aportaciones del 507 antes de realizar operaciones nuevas.</div>}
+          {!datos?.meta && !cargando&&<div className="ag-empty"><BookOpen size={31}/><h3>Este salón todavía no está configurado</h3><p>Un administrador debe importar la lista del Excel o crear un salón en «Ciclos y salones».</p><SmallButton onClick={()=>setVista('gestion')}>Ver configuración</SmallButton></div>}
+          <details className={`ag-disclosure ag-roster-disclosure${esAdmin?' is-admin':''}`} open={esAdmin}>
+            {!esAdmin&&<summary><span><UsersRound size={19}/> Compañeros del salón</span><span className="ag-disclosure-hint">Ver lista</span></summary>}
+          {datos?.meta&&<Panel title={esAdmin?(esAnterior?'Pagos anteriores':'Registro semanal'):'Consulta semanal'} icon={CalendarClock} action={<div className="ag-week-select"><button type="button" onClick={()=>setSemanaElegida(Math.max(semanaMinima,semana-1))} disabled={semana<=semanaMinima}>‹</button><select value={semana} onChange={e=>setSemanaElegida(Number(e.target.value))}>{Array.from({length:Math.max(semanaActual-semanaMinima+1,1)},(_,i)=>i+semanaMinima).reverse().map(n=><option key={n} value={n}>{etiquetaSemana(periodoId,n)}</option>)}</select><button type="button" onClick={()=>setSemanaElegida(Math.min(semanaActual,semana+1))} disabled={semana>=semanaActual}>›</button>{semana!==semanaActual&&<button type="button" className="ag-week-current" title="Volver a la semana actual" onClick={()=>setSemanaElegida(0)}>Actual</button>}</div>}>
+            {esAnterior&&<div className="ag-note"><History size={16}/> Estos pagos históricos están separados del ahorro actual y no generan deudas automáticas.</div>}
+            <div className="ag-toolbar"><label className="ag-search"><Search size={17}/><input placeholder="Buscar por nombre o control..." value={search} onChange={e=>setSearch(e.target.value)}/></label><div className="ag-filters"><button className={filtro==='todos'?'active':''} onClick={()=>setFiltro('todos')}>Todos</button><button className={filtro==='pagado'?'active':''} onClick={()=>setFiltro('pagado')}>Pagaron</button><button className={filtro==='pendiente'?'active':''} onClick={()=>setFiltro('pendiente')}>{esAnterior?'Sin registrar':'Pendientes'}</button></div></div>
+            {!vigenteParaRegistrar&&<div className="ag-note"><History size={16}/> Esta semana corresponde al historial anterior o a un periodo sin registros detallados. No se muestran supuestos adeudos.</div>}
+            <div className="ag-student-list">{visible.map(e=>{const estado=estadoAlumno(e);return <article className={`ag-student${!esAdmin&&registroFijado===e.id?' ag-student-pinned':''}`} key={e.id}><span className="ag-avatar" aria-hidden="true"><UserRound size={22} strokeWidth={2.2}/></span><div className="ag-student-info"><strong title={e.nombre}>{e.nombreVisible}</strong></div><span className={`ag-status ag-status-${estado}`}>{estado==='pagado'?<><Check size={14}/> Pagó</>:estado==='pendiente'?(esAnterior?'Sin registrar':'Pendiente'):'Sin desglose'}</span>{esAdmin&&vigenteParaRegistrar&&!vacacionesActivas&&!periodo?.meta?.cerradoEn&&<div className="ag-pay-actions">{estado==='pagado' ? (esAnterior&&esPagoLegado(pagosLegado,e.id,semana) ? <span title="Pago legado conservado; no se puede modificar aquí"><LockKeyhole size={18}/></span> : <button title="Anular el pago (un toque; se conserva en el historial)" aria-label={`Anular aporte de ${e.nombreVisible} en ${etiquetaSemana(periodoId,semana)}`} disabled={!!operacion} onClick={()=>anularPago(e)}><Minus size={17}/></button>) : <button title={`Registrar ${pesos(cuotaSemanal)} esta semana`} disabled={!!operacion} onClick={()=>registrarPago(e)}><Plus size={18}/></button>}</div>}</article>;})}{!visible.length&&<div className="ag-empty-small">No hay integrantes para este filtro.</div>}</div>
+            <div className="ag-list-foot">{vigenteParaRegistrar?`${pagaron} pagaron · ${pendientes} pendientes`:'No hay desglose disponible para esta semana'}</div>
+          </Panel>}
+          </details>
+          <details className="ag-disclosure ag-finance-disclosure">
+            <summary><span><Wallet size={19}/> Resumen de fondos</span><span className="ag-disclosure-hint">Ver desglose</span></summary>
+            <div className="ag-disclosure-body">
           <section className="ag-summary">
             <div className="ag-balance"><div className="ag-balance-head"><Wallet size={19}/> <span>{esAdminGeneral?'FONDO DE LA CARRERA':generacionId==='gen-2026-2027-A-507'?'APORTACIONES TOTALES DEL 507':`APORTACIONES DEL SALÓN ${salonId}`} </span></div>
               <strong>{!reporteFondos||!reporteFondos.cifrasConfiables?'—':pesos(esAdminGeneral?reporteFondos.totalCarrera:generacionId==='gen-2026-2027-A-507'?reporteFondos.totalAportadoSalon:reporteFondos.aportacionCarrera)}</strong>
@@ -944,21 +996,22 @@ export default function App() {
             </>}
           </Panel>
 
-          {!datos?.meta && !cargando&&<div className="ag-empty"><BookOpen size={31}/><h3>Este salón todavía no está configurado</h3><p>Un administrador debe importar la lista del Excel o crear un salón en «Ciclos y salones».</p><SmallButton onClick={()=>setVista('gestion')}>Ver configuración</SmallButton></div>}
-          {datos?.meta&&<Panel title={esAnterior?'Pagos anteriores · registro semanal':'Registro semanal'} icon={CalendarClock} action={<div className="ag-week-select"><button type="button" onClick={()=>setSemanaElegida(Math.max(semanaMinima,semana-1))} disabled={semana<=semanaMinima}>‹</button><select value={semana} onChange={e=>setSemanaElegida(Number(e.target.value))}>{Array.from({length:Math.max(semanaActual-semanaMinima+1,1)},(_,i)=>i+semanaMinima).reverse().map(n=><option key={n} value={n}>{etiquetaSemana(periodoId,n)}</option>)}</select><button type="button" onClick={()=>setSemanaElegida(Math.min(semanaActual,semana+1))} disabled={semana>=semanaActual}>›</button>{semana!==semanaActual&&<button type="button" className="ag-week-current" title="Volver a la semana actual" onClick={()=>setSemanaElegida(0)}>Actual</button>}</div>}>
-            {esAnterior&&<div className="ag-note"><History size={16}/> {etiquetaSemana(periodoId,semana)}: registra aquí los pagos atrasados del periodo anterior al reinicio. Se guardan como historial independiente, no generan adeudos automáticos y NO aumentan el saldo de la carrera. Si ya había un pago anterior registrado, se respeta y no se duplica.</div>}
-            <div className="ag-toolbar"><label className="ag-search"><Search size={17}/><input placeholder="Buscar por nombre o control..." value={search} onChange={e=>setSearch(e.target.value)}/></label><div className="ag-filters"><button className={filtro==='todos'?'active':''} onClick={()=>setFiltro('todos')}>Todos</button><button className={filtro==='pagado'?'active':''} onClick={()=>setFiltro('pagado')}>Pagaron</button><button className={filtro==='pendiente'?'active':''} onClick={()=>setFiltro('pendiente')}>{esAnterior?'Sin registrar':'Pendientes'}</button></div></div>
-            {!vigenteParaRegistrar&&<div className="ag-note"><History size={16}/> Esta semana corresponde al historial anterior o a un periodo sin registros detallados. No se muestran supuestos adeudos.</div>}
-            <div className="ag-student-list">{visible.map(e=>{const estado=estadoAlumno(e);return <article className="ag-student" key={e.id}><span className="ag-avatar" aria-hidden="true"><UserRound size={22} strokeWidth={2.2}/></span><div className="ag-student-info"><strong title={e.nombre}>{e.nombreVisible}</strong><small>{e.control?`Control ${e.control} · `:''}{etiquetaSemana(periodoId,semana)}</small></div><span className={`ag-status ag-status-${estado}`}>{estado==='pagado'?<><Check size={14}/> Pagó</>:estado==='pendiente'?(esAnterior?'Sin registrar':'Pendiente'):'Sin desglose'}</span>{esAdmin&&vigenteParaRegistrar&&!vacacionesActivas&&!periodo?.meta?.cerradoEn&&<div className="ag-pay-actions">{estado==='pagado' ? (esAnterior&&esPagoLegado(pagosLegado,e.id,semana) ? <span title="Pago legado conservado; no se puede modificar aquí"><LockKeyhole size={18}/></span> : <button title="Anular el pago (un toque; se conserva en el historial)" aria-label={`Anular aporte de ${e.nombreVisible} en ${etiquetaSemana(periodoId,semana)}`} disabled={!!operacion} onClick={()=>anularPago(e)}><Minus size={17}/></button>) : <button title={`Registrar ${pesos(cuotaSemanal)} esta semana`} disabled={!!operacion} onClick={()=>registrarPago(e)}><Plus size={18}/></button>}</div>}</article>;})}{!visible.length&&<div className="ag-empty-small">No hay integrantes para este filtro.</div>}</div>
-            <div className="ag-list-foot">{vigenteParaRegistrar?`${pagaron} pagos registrados · ${pendientes} ${esAnterior?'sin registrar (no son adeudos automáticos)':'pendientes de esta semana'}`:'Sin desglose semanal para esta selección'}</div>
-          </Panel>}
+            </div>
+          </details>
+          {datos?.meta&&<details className="ag-disclosure ag-history-disclosure">
+            <summary><span><History size={19}/> Historial de movimientos</span><span className="ag-disclosure-hint">Ver historial</span></summary>
+            <div className="ag-disclosure-body">
           {esCorteEnSalon&&datos?.meta&&<Panel title="Pagos históricos anteriores al reinicio" icon={History}>
             <p className="ag-muted">Registro histórico independiente (numeración original). Estas aportaciones no se suman al fondo nuevo de Ingeniería Industrial. Ninguna semana anterior genera deuda automática.</p>
             <p className="ag-note">{resumenAnterior.registros} pagos históricos activos · {pesos(resumenAnterior.importeHistorico)} de importe registrado en esta sección (NO es saldo disponible).</p>
             <div className="ag-timeline">{pagosHistAnteriores.slice(0,100).map(p=><div className="ag-timeline-row" key={p.id}><span className={`ag-timeline-mark ${p.estado==='pagado'?'ok':'cancel'}`}>{p.estado==='pagado'?<Check size={16}/>:<X size={16}/>}</span><div><strong>{nombreParaMostrar(integrantes[p.estudianteId]?.nombre||p.nombre||'Integrante',p.estudianteId,integrantes[p.estudianteId]?.formatoNombre)}</strong><small>{etiquetaSemana(periodoId,p.semana)} · {fechaLarga(p.creadoEn)} {p.estado==='anulado'?'· Anulación':''}{p.motivo?` · ${p.motivo}`:''}</small></div><b>{p.estado==='pagado'?'+':'−'}{pesos(p.monto)}</b></div>)}{!pagosHistAnteriores.length&&<p className="ag-muted">No hay capturas históricas nuevas. Los registros originales anteriores al reinicio permanecen intactos.</p>}</div>
           </Panel>}
           {datos?.meta&&<Panel title="Historial de aportaciones" icon={History}><p className="ag-muted">Movimientos del nuevo ahorro. Los registros anteriores permanecen respaldados y no se suman.</p><div className="ag-timeline">{pagosHist.slice(0,100).map(p=><div className="ag-timeline-row" key={p.id}><span className={`ag-timeline-mark ${p.estado==='pagado'?'ok':'cancel'}`}>{p.estado==='pagado'?<Check size={16}/>:<X size={16}/>}</span><div><strong title={p.nombre||integrantes[p.estudianteId]?.nombre||''}>{nombreParaMostrar(integrantes[p.estudianteId]?.nombre||p.nombre||'Integrante',p.estudianteId,integrantes[p.estudianteId]?.formatoNombre)}</strong><small>{etiquetaSemana(periodoId,p.semana)} · {fechaLarga(p.creadoEn)} {p.estado==='anulado'?'· Anulación':''}{p.motivo?` · ${p.motivo}`:''}</small></div><b>{p.estado==='pagado'?'+':'−'}{pesos(p.monto)}</b></div>)}{!pagosHist.length&&<p className="ag-muted">Todavía no hay pagos semanales detallados para este salón.</p>}</div></Panel>}
-        {esAdmin&&!periodo?.meta?.cerradoEn&&datos?.meta&&(periodoId!=='2026-2027-A'||ahorroNuevoActivo)&&<Panel title="Retirar ahorro de mi salón" icon={ArrowDownRight}>
+                    </div>
+          </details>}
+          {esAdmin&&!periodo?.meta?.cerradoEn&&datos?.meta&&(periodoId!=='2026-2027-A'||ahorroNuevoActivo)&&<details className="ag-disclosure ag-withdraw-disclosure">
+          <summary><span><ArrowDownRight size={19}/> Retirar dinero del salón</span><span className="ag-disclosure-hint">Abrir</span></summary>
+          <div className="ag-disclosure-body"><Panel title="Retirar ahorro de mi salón" icon={ArrowDownRight}>
            <p className="ag-muted">Retira directamente, sin escribir una justificación y sin esperar aprobación. Solo puedes retirar dinero disponible de tu propio grupo; el movimiento quedará registrado con fecha, importe y responsable.</p>
            <form className="ag-simple-form" onSubmit={solicitarRetiro}>
              {generacionId==='gen-2026-2027-A-507'&&<label>¿De qué fondo quieres retirar?
@@ -976,15 +1029,17 @@ export default function App() {
              </label>
              <SmallButton type="submit" variant="primary" disabled={!!operacion||!reporteFondos?.cifrasConfiables}><ArrowDownRight size={17}/> Retirar y descontar</SmallButton>
            </form>
-           <p className="ag-muted">Confirmarás el importe antes del descuento. El retiro queda en el historial y no cambia pagos anteriores.</p>
-         </Panel>}
-        <Panel title="Avisos de movimientos y retiros" icon={BellRing} action={<SmallButton onClick={permitirAvisos}><Bell size={16}/> Permitir avisos</SmallButton>}><p className="ag-muted">Los retiros ya realizados de Industrial aparecen para todos los salones. También se descuentan automáticamente del fondo general; las notificaciones del dispositivo funcionan cuando la aplicación está abierta y el permiso está activado.</p>
+           <p className="ag-muted">El importe se confirma antes de descontarlo y queda registrado.</p>
+         </Panel></div></details>}
+        <details className="ag-disclosure ag-notices-disclosure">
+          <summary><span><BellRing size={19}/> Avisos de movimientos {avisosGlobales.length>0?`(${avisosGlobales.length})`:''}</span><span className="ag-disclosure-hint">Ver avisos</span></summary>
+          <div className="ag-disclosure-body"><Panel title="Avisos de movimientos y retiros" icon={BellRing} action={<SmallButton onClick={permitirAvisos}><Bell size={16}/> Permitir avisos</SmallButton>}><p className="ag-muted">Los retiros ya realizados de Industrial aparecen para todos los salones. También se descuentan automáticamente del fondo general; las notificaciones del dispositivo funcionan cuando la aplicación está abierta y el permiso está activado.</p>
           {avisosGlobales.map(a=><div className="ag-withdrawal" key={a.id}>
             <div className="ag-withdrawal-head"><span className="ag-status ag-status-aprobado">Retiro de Industrial · Realizado</span><strong>−{pesos(a.monto)}</strong></div>
             <small>{fechaLarga(a.fecha)} · Descontado del fondo general</small>
           </div>)}
           {!avisosGlobales.length&&<p className="ag-muted">Todavía no hay avisos compartidos de retiros de Industrial.</p>}
-          {!datos?.meta?<div className="ag-empty-small">Selecciona un salón configurado.</div>:<div className="ag-timeline">{avisosVisibles.map(r=><div key={r.id} className="ag-withdrawal"><div className="ag-withdrawal-head"><span className={`ag-status ag-status-${r.estado}`}>{r.estado==='solicitado'?'Solicitud de retiro':r.estado==='aprobado'?(r.tipo==='directo'?'Retiro realizado':'Retiro aprobado'):'Solicitud rechazada'}</span><strong>{pesos(r.monto)}</strong></div>{r.motivo&&r.motivo!=='Retiro directo'&&<p>{r.motivo}</p>}<small>{fechaLarga(r.creadoEn)} {r.respondidoEn?`· Resuelto ${fechaLarga(r.respondidoEn)}`:''}</small>{esAdminGeneral&&r.fondo==='carrera'&&!periodo?.meta?.cerradoEn&&r.estado==='solicitado'&&<div className="ag-withdrawal-buttons"><SmallButton disabled={!!operacion} onClick={()=>resolverRetiro(r,'aprobado')} variant="primary"><Check size={16}/> Aprobar y descontar</SmallButton><SmallButton disabled={!!operacion} onClick={()=>resolverRetiro(r,'rechazado')}>Rechazar</SmallButton></div>}</div>)}{!avisosVisibles.length&&<p className="ag-muted">No existen avisos de retiro para este salón.</p>}</div>}</Panel></>}
+          {!datos?.meta?<div className="ag-empty-small">Selecciona un salón configurado.</div>:<div className="ag-timeline">{avisosVisibles.map(r=><div key={r.id} className="ag-withdrawal"><div className="ag-withdrawal-head"><span className={`ag-status ag-status-${r.estado}`}>{r.estado==='solicitado'?'Solicitud de retiro':r.estado==='aprobado'?(r.tipo==='directo'?'Retiro realizado':'Retiro aprobado'):'Solicitud rechazada'}</span><strong>{pesos(r.monto)}</strong></div>{r.motivo&&r.motivo!=='Retiro directo'&&<p>{r.motivo}</p>}<small>{fechaLarga(r.creadoEn)} {r.respondidoEn?`· Resuelto ${fechaLarga(r.respondidoEn)}`:''}</small>{esAdminGeneral&&r.fondo==='carrera'&&!periodo?.meta?.cerradoEn&&r.estado==='solicitado'&&<div className="ag-withdrawal-buttons"><SmallButton disabled={!!operacion} onClick={()=>resolverRetiro(r,'aprobado')} variant="primary"><Check size={16}/> Aprobar y descontar</SmallButton><SmallButton disabled={!!operacion} onClick={()=>resolverRetiro(r,'rechazado')}>Rechazar</SmallButton></div>}</div>)}{!avisosVisibles.length&&<p className="ag-muted">No existen avisos de retiro para este salón.</p>}</div>}</Panel></div></details></>}
         {vistaActiva==='consulta'&&esAdmin&&<Panel title="Aportaciones de los salones a la carrera" icon={UsersRound}>
           <ConsultaSalones usuario={usuario} periodoId={periodoId} salonActual={salonId}/>
         </Panel>}
