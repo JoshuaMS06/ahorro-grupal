@@ -76,7 +76,7 @@ test('selector comienza exclusivamente en octubre, sin septiembre ni fechas cort
    'Semana 2 de noviembre','Semana 1 de noviembre',
    'Semana 4 de octubre','Semana 3 de octubre','Semana 2 de octubre','Semana 1 de octubre'
  ]);
- assert.equal(opciones.every(x=>!(/septiembre|\\d{2}-\\d{2}|\\d{2}\\/\\d{2}/i).test(x)),true);
+ assert.equal(opciones.every(x=>!(/septiembre|\d{2}-\d{2}|\d{2}\/\d{2}/i).test(x)),true);
  assert.equal(primeraSemanaCalendarioVisible('2026-2027-B',meta),1);
 });
 
