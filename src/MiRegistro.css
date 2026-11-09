@@ -31,3 +31,9 @@
 .ag-me-choose p{font-size:12px;color:#bdaed4;line-height:1.5;margin:0}
 .ag-me-text-button{align-self:flex-start}
 @media(max-width:420px){.ag-me-card{padding:18px 14px}.ag-me-name-row{gap:9px}.ag-me-avatar{width:45px;height:45px;flex-basis:45px}.ag-me-change{padding:7px}.ag-me-stats>div{padding:13px}.ag-me-stats strong{font-size:22px}}
+
+/* La tarjeta fijada muestra la semana del mes y el intervalo exacto. */
+.ag-me-week>div:first-child{min-width:0}
+.ag-me-week>div>strong{font-size:clamp(15px,3.8vw,20px);line-height:1.35;overflow-wrap:anywhere}
+.ag-me-week-range{display:block;margin-top:3px;font-size:11px;color:#f0dffe;line-height:1.4}
+@media(max-width:380px){.ag-me-week{flex-wrap:wrap}.ag-me-week>div{width:100%}}
