@@ -704,8 +704,8 @@ export default function App() {
     const confirmacion=window.prompt(
       `${accionTexto} en el ciclo ${periodoId}.\n\n`+
       (accion==='iniciar'
-        ? `La semana ${semanaActualEtiqueta} quedará congelada. No se registrarán nuevas aportaciones hasta reanudar.\n\n`
-        : `Se retomará la semana ${semanaActualEtiqueta}; la siguiente empezará el próximo lunes. No se cobrarán semanas de vacaciones.\n\n`)+
+        ? `La ${semanaActualEtiqueta} quedará congelada. No se registrarán nuevas aportaciones hasta reanudar.\n\n`
+        : `Se retomará la ${semanaActualEtiqueta}; la siguiente empezará el próximo lunes. No se cobrarán semanas de vacaciones.\n\n`)+
       'Escribe exactamente CONFIRMAR para continuar:'
     );
     if(confirmacion===null)return;
@@ -717,7 +717,7 @@ export default function App() {
           try{return aplicarVacaciones(meta,accion,ahora);}catch{return;}
         },{applyLocally:false});
         if(!r.committed)throw Error('El estado del calendario cambió o la operación no está permitida.');
-        return accion==='iniciar'?`Vacaciones iniciadas. Semana ${numeroSemanaVisible(periodoId,r.snapshot.val().vacaciones.semanaPausada)} congelada.`:'Clases reanudadas. La siguiente semana comenzará el próximo lunes.';
+        return accion==='iniciar'?`Vacaciones iniciadas. ${etiquetaSemana(periodoId,r.snapshot.val().vacaciones.semanaPausada,periodo?.meta)} congelada.`:'Clases reanudadas. La siguiente semana comenzará el próximo lunes.';
       }
       const token=await usuario.getIdToken();
       const respuesta=await fetch('/api/control-vacaciones',{
@@ -726,7 +726,7 @@ export default function App() {
       });
       const body=await respuesta.json().catch(()=>({}));
       if(!respuesta.ok)throw Error(body.error||`No se pudo modificar el calendario (HTTP ${respuesta.status}).`);
-      return accion==='iniciar'?`Vacaciones iniciadas. Semana ${numeroSemanaVisible(periodoId,body.semana)} congelada.`:'Clases reanudadas. La siguiente semana comenzará el próximo lunes.';
+      return accion==='iniciar'?`Vacaciones iniciadas. ${etiquetaSemana(periodoId,body.semana,periodo?.meta)} congelada.`:'Clases reanudadas. La siguiente semana comenzará el próximo lunes.';
     });
   };
   const activarReinicioSeguro=async()=>{
@@ -776,7 +776,7 @@ export default function App() {
   const cerrarCiclo=async()=>{
     if(!esAdminGeneral||!periodo?.meta||periodo?.meta?.cerradoEn||vacacionesActivas)return;
     const actual=semanaPeriodo(periodo.meta);
-    if(!window.confirm(`¿Cerrar el ciclo ${periodoId} al terminar la semana ${numeroSemanaVisible(periodoId,actual)}? Se conservarán sus pagos, pero se bloquearán nuevos registros en la aplicación. Comprueba antes que no existan solicitudes de retiro pendientes en ningún salón.`))return;
+    if(!window.confirm(`¿Cerrar el ciclo ${periodoId} al terminar la ${etiquetaSemana(periodoId,actual,periodo?.meta)}? Se conservarán sus pagos, pero se bloquearán nuevos registros en la aplicación. Comprueba antes que no existan solicitudes de retiro pendientes en ningún salón.`))return;
     await withOperation('cierre',async()=>{
       const r=await runTransaction(ref(database,`periodos/${periodoId}/meta`),meta=>{
         if(!meta||meta.cerradoEn)return;
@@ -881,8 +881,8 @@ export default function App() {
       {!tieneAcceso ? <AccesoSalon abrirLogin={()=>setLoginOpen(true)} ingresarConCodigo={ingresarConCodigo}
         ocupado={!!operacion} error={errorAcceso} modoDemo={usarEmuladores}/> : <main className="ag-main">
         {dbError&&<div className="ag-error"><AlertTriangle size={18}/> {dbError}</div>}
-        <div className="ag-intro ag-intro-compact"><div><span className="ag-kicker">{esAdminGeneral?'ADMINISTRACIÓN GENERAL':esResponsable?`RESPONSABLE · SALÓN ${salonId}`:`SALÓN ${salonId}`} {periodo?.meta?.cerradoEn?' · CICLO ARCHIVADO':''}</span><h1>{esAdminGeneral?'Panel general':esAdmin?'Registro de pagos':'Mi ahorro grupal'}</h1></div><div className="ag-week-pill"><CalendarClock size={18}/> Semana {semanaActualEtiqueta}</div></div>
-        {vacacionesActivas&&<div className="ag-note"><PauseCircle size={17}/> Vacaciones activas: semana {semanaActualEtiqueta} congelada. No se registran aportaciones ni nuevas semanas pendientes.</div>}
+        <div className="ag-intro ag-intro-compact"><div><span className="ag-kicker">{esAdminGeneral?'ADMINISTRACIÓN GENERAL':esResponsable?`RESPONSABLE · SALÓN ${salonId}`:`SALÓN ${salonId}`} {periodo?.meta?.cerradoEn?' · CICLO ARCHIVADO':''}</span><h1>{esAdminGeneral?'Panel general':esAdmin?'Registro de pagos':'Mi ahorro grupal'}</h1></div><div className="ag-week-pill ag-week-monthly"><CalendarClock size={18}/><span><strong>{semanaActualEtiqueta}</strong>{semanaActualRango&&<small>{semanaActualRango}</small>}</span></div></div>
+        {vacacionesActivas&&<div className="ag-note"><PauseCircle size={17}/> Vacaciones activas: {semanaActualEtiqueta} congelada. No se registran aportaciones ni nuevas semanas pendientes.</div>}
         {esAdminGeneral&&<div className="ag-selectors">
           <label>Ciclo escolar<select value={periodoId} onChange={e=>cambiarPeriodo(e.target.value)}>{periodKeys.length ? periodKeys.map(k=><option key={k} value={k}>{periodos[k]?.meta?.nombre||k}</option>):<option value={defaultPeriod}>Sin listas importadas</option>}</select></label>
           <label>Salón<select value={salonId} onChange={e=>cambiarSalon(e.target.value)}>{salones.length ? salones.map(k=><option key={k} value={k}>{periodo?.salones?.[k]?.nombre||`Salón ${k}`}</option>):<option value="507">Sin salones</option>}</select></label>
@@ -923,7 +923,7 @@ export default function App() {
           <section className="ag-general-metrics" aria-label="Resumen del ciclo">
             <div><UsersRound size={22}/><strong>{Object.keys(periodo?.salones||{}).length}</strong><span>Salones del ciclo</span></div>
             <div><UserCog size={22}/><strong>{Object.values(responsables?.[periodoId]||{}).reduce((n,p)=>n+Object.values(p||{}).filter(Boolean).length,0)}</strong><span>Responsables asignados</span></div>
-            <div><CalendarClock size={22}/><strong>{semanaActualEtiqueta}</strong><span>Semana actual</span></div>
+            <div className="ag-month-metric"><CalendarClock size={22}/><strong>{semanaActualEtiqueta}</strong><span>{semanaActualRango||'Semana actual'}</span></div>
           </section>
           <Panel title="¿Qué necesitas hacer?" icon={LayoutDashboard}>
             <div className="ag-general-actions">
@@ -935,10 +935,11 @@ export default function App() {
           </Panel>
         </>}
         {vistaActiva==='pagos'&&<>
-          {!esAdmin&&<MiRegistro salon={salonId} semana={semanaActualEtiqueta} lista={lista}
+          {!esAdmin&&<MiRegistro salon={salonId} semana={semanaActualEtiqueta} fechas={semanaActualRango} lista={lista}
             seleccionado={registroFijado} pagos={pagos} estado={estadoMiRegistro} guardar={guardarRegistroFijado}/>}
           {esAdmin&&<section className="ag-week-glance" aria-label="Avance semanal">
             <div className="ag-week-glance-heading"><span><CalendarClock size={18}/> {etiquetaSemana(periodoId,semana,periodo?.meta)}</span><strong>{cargando?'—':lista.length} estudiantes</strong></div>
+            <p className="ag-month-date-line">{rangoFechasSemana(periodoId,semana,periodo?.meta)}</p>
             <div className="ag-week-glance-numbers">
               <div><strong>{vigenteParaRegistrar?pagaron:'—'}</strong><span>Pagaron</span></div>
               <div><strong>{vigenteParaRegistrar?pendientes:'—'}</strong><span>Pendientes</span></div>
