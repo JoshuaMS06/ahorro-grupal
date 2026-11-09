@@ -5,7 +5,7 @@ import './MiRegistro.css';
 
 const pesos=m=>new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN',maximumFractionDigits:0}).format(Number(m)||0);
 
-export default function MiRegistro({salon,semana,lista,seleccionado,pagos,estado,guardar}){
+export default function MiRegistro({salon,semana,fechas,lista,seleccionado,pagos,estado,guardar}){
   const [cambiar,setCambiar]=useState(false);
   const persona=lista.find(e=>e.id===seleccionado);
   const resumen=resumenRegistroPersonal(pagos,persona?.id);
@@ -37,7 +37,7 @@ export default function MiRegistro({salon,semana,lista,seleccionado,pagos,estado
         {!cambiar&&<button type="button" className="ag-me-change" onClick={()=>setCambiar(true)}>Cambiar</button>}
       </div>
       <div className="ag-me-week">
-        <div><span>Semana actual</span><strong>{semana}</strong></div>
+        <div><span>Semana actual</span><strong>{semana}</strong>{fechas&&<small className="ag-me-week-range">{fechas}</small>}</div>
         <span className={`ag-me-payment ${pagado?'is-paid':actual==='pendiente'?'is-pending':'is-unknown'}`}>
           {pagado&&<Check size={17}/>} {pagado?'Pagó':actual==='pendiente'?'Pendiente':'Sin datos'}
         </span>
