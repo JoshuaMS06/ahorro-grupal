@@ -18,6 +18,8 @@ import { esResponsableDeSalon } from '../lib/roles.js';
 import { distribucionNueva, generacionDeAula, resumirFondos } from '../lib/fondos.js';
 import { informeVisibleSegunRol } from '../lib/informeRoles.js';
 import {listarAvisosCarrera} from '../lib/avisosCarrera.js';
+import {claveRegistroPersonal,leerRegistrosFijados,fijarRegistroPersonal} from '../lib/registroPersonal.js';
+import MiRegistro from './MiRegistro.jsx';
 import { periodoSiguiente, salonSiguiente } from '../lib/semestres.js';
 import { prepararExcel, revisarCoincidencias } from '../lib/importarExcel.js';
 import { aplicarVacaciones, esConfirmacionValida } from '../lib/vacaciones.js';
@@ -106,6 +108,7 @@ export default function App() {
   const [toast,setToast]=useState('');
   const [search,setSearch]=useState('');
   const [filtro,setFiltro]=useState('todos');
+  const [registrosFijados,setRegistrosFijados]=useState(()=>leerRegistrosFijados(window.localStorage));
   const [vista,setVista]=useState('panel');
   const [fecha,setFecha]=useState(()=>Date.now());
   const [semanaElegida,setSemanaElegida]=useState(0);
@@ -286,6 +289,15 @@ export default function App() {
   const generacionId=generacionDeAula(periodoId,salonId,datos?.meta);
   const integrantes=useMemo(()=>datos?.integrantes||{},[datos]);
   const lista=useMemo(()=>Object.entries(integrantes).map(([id,v])=>({id,...v,nombreVisible:nombreParaMostrar(v.nombre,id,v.formatoNombre)})).sort((a,b)=> a.nombreVisible.localeCompare(b.nombreVisible,'es',{sensitivity:'base'}) || a.nombre.localeCompare(b.nombre,'es') || a.id.localeCompare(b.id)),[integrantes]);
+  const registroFijado=registrosFijados[claveRegistroPersonal(periodoId,salonId)]||null;
+  const guardarRegistroFijado=id=>setRegistrosFijados(previo=>
+    fijarRegistroPersonal(previo,periodoId,salonId,id,window.localStorage));
+  const estadoMiRegistro=e=>{
+    const pagosActuales=datos?.[rutaPagoSeleccionado(periodos,periodoId,semanaActual)]||{};
+    if(esSemanaAnterior(periodos,periodoId,semanaActual)
+      &&esPagoLegado(datos?.pagos||{},e.id,semanaActual))return 'pagado';
+    return estadoSemana(pagosActuales,e.id,semanaActual);
+  };
   const ahorroNuevoActivo=corteActivo(periodos);
   const esCorteEnSalon=esPeriodoReinicio(periodos,periodoId);
   const nodoPagos=rutaPagos(periodos,periodoId);
@@ -348,7 +360,8 @@ export default function App() {
   const pagaron=detalleSemana.filter(e=>estadoAlumno(e)==='pagado').length;
   const pendientes=detalleSemana.filter(e=>estadoAlumno(e)==='pendiente').length;
   const consulta=normalizarBusquedaNombre(search.trim());
-  const visible=detalleSemana.filter(e=> !consulta || normalizarBusquedaNombre([e.nombreVisible,e.nombre,e.aliasLegado,e.control].join(' ')).includes(consulta)).filter(e=>filtro==='todos'||estadoAlumno(e)===filtro);
+  const visible=detalleSemana.filter(e=>!consulta||normalizarBusquedaNombre([e.nombreVisible,e.nombre,e.aliasLegado,e.control].join(' ')).includes(consulta)).filter(e=>filtro==='todos'||estadoAlumno(e)===filtro)
+    .sort((a,b)=>!esAdmin&&registroFijado?(a.id===registroFijado?-1:b.id===registroFijado?1:0):0);
   const pagosHist=Object.entries(pagos).flatMap(([id,p])=>{
     if(!p?.estudianteId)return [];
     const eventos=Object.entries(p.historial||{});
@@ -864,16 +877,21 @@ export default function App() {
       {!tieneAcceso ? <AccesoSalon abrirLogin={()=>setLoginOpen(true)} ingresarConCodigo={ingresarConCodigo}
         ocupado={!!operacion} error={errorAcceso} modoDemo={usarEmuladores}/> : <main className="ag-main">
         {dbError&&<div className="ag-error"><AlertTriangle size={18}/> {dbError}</div>}
-        <div className="ag-intro"><div><span className="ag-kicker">{esAdminGeneral?'ADMINISTRACIÓN GENERAL · INGENIERÍA INDUSTRIAL':`SALÓN · ${salonId} · ${periodo?.meta?.nombre||periodoId}`} {periodo?.meta?.cerradoEn?' · CICLO ARCHIVADO':''}</span><h1>{esAdminGeneral?'Panel de administración':'Control de aportaciones'}</h1><p>{esAdminGeneral?'Gestión del fondo de la carrera':esInvitadoCodigo?`Consulta privada del salón · ${pesos(cuotaSemanal)} por semana.`:`Registro de tu salón · ${pesos(cuotaSemanal)} por semana.`}</p></div><div className="ag-week-pill"><CalendarClock size={19}/> Semana {semanaActualMostrada}</div></div>
+        <div className="ag-intro ag-intro-compact"><div><span className="ag-kicker">{esAdminGeneral?'ADMINISTRACIÓN GENERAL':esResponsable?`RESPONSABLE · SALÓN ${salonId}`:`SALÓN ${salonId}`} {periodo?.meta?.cerradoEn?' · CICLO ARCHIVADO':''}</span><h1>{esAdminGeneral?'Panel general':esAdmin?'Registro de pagos':'Mi ahorro grupal'}</h1></div><div className="ag-week-pill"><CalendarClock size={18}/> Semana {semanaActualMostrada}</div></div>
         {vacacionesActivas&&<div className="ag-note"><PauseCircle size={17}/> Vacaciones activas: semana {semanaActualMostrada} congelada. No se registran aportaciones ni nuevas semanas pendientes.</div>}
-        <div className="ag-selectors">
-          <label>Ciclo escolar<select disabled={!esAdminGeneral} value={periodoId} onChange={e=>cambiarPeriodo(e.target.value)}>{periodKeys.length ? periodKeys.map(k=><option key={k} value={k}>{periodos[k]?.meta?.nombre||k}</option>):<option value={defaultPeriod}>Sin listas importadas</option>}</select></label>
-          <label>Salón<select disabled={!esAdminGeneral} value={salonId} onChange={e=>cambiarSalon(e.target.value)}>{salones.length ? salones.map(k=><option key={k} value={k}>{periodo?.salones?.[k]?.nombre||`Salón ${k}`}</option>):<option value="507">Sin salones</option>}</select></label>
-        </div>
+        {esAdminGeneral&&<div className="ag-selectors">
+          <label>Ciclo escolar<select value={periodoId} onChange={e=>cambiarPeriodo(e.target.value)}>{periodKeys.length ? periodKeys.map(k=><option key={k} value={k}>{periodos[k]?.meta?.nombre||k}</option>):<option value={defaultPeriod}>Sin listas importadas</option>}</select></label>
+          <label>Salón<select value={salonId} onChange={e=>cambiarSalon(e.target.value)}>{salones.length ? salones.map(k=><option key={k} value={k}>{periodo?.salones?.[k]?.nombre||`Salón ${k}`}</option>):<option value="507">Sin salones</option>}</select></label>
+        </div>}
         {avisosGlobales[0]&&<div className="ag-note" role="status">
           <BellRing size={17}/> Último aviso del fondo general: retiro de <strong>{pesos(avisosGlobales[0].monto)}</strong> de Industrial el {fechaLarga(avisosGlobales[0].fecha)}. Ya se descontó del saldo; no está pendiente.
         </div>}
-        <div className="ag-tabs" role="tablist" aria-label="Apartados">{esAdminGeneral&&<button className={vistaActiva==='panel'?'active':''} onClick={()=>setVista('panel')}><LayoutDashboard size={17}/> Inicio</button>}<button className={vistaActiva==='pagos'?'active':''} onClick={()=>setVista('pagos')}><Wallet size={17}/> Aportaciones</button>{esAdmin&&<button className={vistaActiva==='consulta'?'active':''} onClick={()=>setVista('consulta')}><UsersRound size={17}/> Consultar salones</button>}{esAdmin&&<button className={vistaActiva==='profesores'?'active':''} onClick={()=>setVista('profesores')}><GraduationCap size={17}/> Profesores</button>}{esAdmin&&<button className={vistaActiva==='gestion'?'active':''} onClick={()=>setVista('gestion')}><BookOpen size={17}/> Ciclos y salones</button>}{esAdminGeneral&&<button className={vistaActiva==='roles'?'active':''} onClick={()=>setVista('roles')}><ShieldCheck size={17}/> Responsables</button>}{esAdminGeneral&&<button className={vistaActiva==='lectores'?'active':''} onClick={()=>setVista('lectores')}><LockKeyhole size={17}/> Accesos</button>}</div>
+        {esAdmin&&<div className="ag-tabs" aria-label="Apartados principales">
+          {esAdminGeneral&&<button className={vistaActiva==='panel'?'active':''} onClick={()=>setVista('panel')}><LayoutDashboard size={17}/> Inicio</button>}
+          <button className={vistaActiva==='pagos'?'active':''} onClick={()=>setVista('pagos')}><Wallet size={17}/> Registrar pagos</button>
+          <button className={vistaActiva==='consulta'?'active':''} onClick={()=>setVista('consulta')}><UsersRound size={17}/> Consultar salones</button>
+          <button className={!['panel','pagos','consulta'].includes(vistaActiva)?'active':''} onClick={()=>setMostrarMenu(!mostrarMenu)}><Menu size={17}/> Más opciones</button>
+        </div>}
         {vistaActiva==='panel'&&esAdminGeneral&&<>
           <section className="ag-general-hero" aria-label="Resumen general del ahorro de carrera">
             <div className="ag-general-label"><CircleDollarSign size={22}/> FONDO DE INGENIERÍA INDUSTRIAL</div>
