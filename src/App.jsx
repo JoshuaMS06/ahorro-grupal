@@ -293,9 +293,12 @@ export default function App() {
   const guardarRegistroFijado=id=>setRegistrosFijados(previo=>
     fijarRegistroPersonal(previo,periodoId,salonId,id,window.localStorage));
   const estadoMiRegistro=e=>{
+    const historica=esSemanaAnterior(periodos,periodoId,semanaActual);
+    const inicio=inicioAportaciones(periodos,periodoId,datos?.meta);
+    if((!historica&&semanaActual<inicio)||(periodoId==='2026-2027-A'&&!corteActivo(periodos)))
+      return 'sin-dato';
     const pagosActuales=datos?.[rutaPagoSeleccionado(periodos,periodoId,semanaActual)]||{};
-    if(esSemanaAnterior(periodos,periodoId,semanaActual)
-      &&esPagoLegado(datos?.pagos||{},e.id,semanaActual))return 'pagado';
+    if(historica&&esPagoLegado(datos?.pagos||{},e.id,semanaActual))return 'pagado';
     return estadoSemana(pagosActuales,e.id,semanaActual);
   };
   const ahorroNuevoActivo=corteActivo(periodos);
