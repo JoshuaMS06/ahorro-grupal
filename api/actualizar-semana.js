@@ -63,7 +63,7 @@ export default async function handler(req, res) {
     if (!lista.ok) throw new Error(`No se pudieron consultar los ciclos: HTTP ${lista.status}`);
     const {id:periodoId,meta} = seleccionarCicloActivo(await lista.json());
     const semanaInterna = semanaPeriodo(meta);
-    const semana = numeroSemanaVisible(periodoId,semanaInterna);
+    const semana = numeroSemanaVisible(periodoId,semanaInterna,meta);
     const vacacionesActivas = meta.vacaciones?.activas===true;
     const ruta = `${DATABASE_URL}/ahorro/semana.json`;
     // Solo se modifica el nodo semana; jamás se sobreescriben integrantes o pagos.
