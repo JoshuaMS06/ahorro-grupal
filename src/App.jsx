@@ -864,10 +864,10 @@ export default function App() {
         <div className="ag-header-actions">
           {tieneAcceso ? <span className="ag-admin-pill"><ShieldCheck size={16}/> {esAdminGeneral?'Admin. general':esResponsable?`Responsable ${salonId}`:`Salón ${salonId}`}</span> : <button className="ag-icon" type="button" title="Acceso administrativo" onClick={()=>setLoginOpen(true)}><LockKeyhole size={21}/></button>}
           {usuario&&<button className="ag-icon" type="button" title="Cerrar sesión" onClick={()=>signOut(auth)}><LogOut size={19}/></button>}
-          <button className="ag-icon" type="button" title="Menú" onClick={()=>setMostrarMenu(!mostrarMenu)}><Menu size={22}/></button>
+          {(!tieneAcceso||esAdmin)&&<button className="ag-icon" type="button" title="Menú" onClick={()=>setMostrarMenu(!mostrarMenu)}><Menu size={22}/></button>}
         </div>
       </header>
-      {mostrarMenu&&<nav className="ag-menu">
+      {mostrarMenu&&(!tieneAcceso||esAdmin)&&<nav className="ag-menu">
           {esAdminGeneral&&<button onClick={()=>{setVista('panel');setMostrarMenu(false);}}>Panel general</button>}
           {tieneAcceso&&<button onClick={()=>{setVista('pagos');setMostrarMenu(false);}}>Aportaciones</button>}
           {esAdmin&&<button onClick={()=>{setVista('consulta');setMostrarMenu(false);}}>Consultar otros salones</button>}
@@ -945,9 +945,9 @@ export default function App() {
             </div>
             <div className="ag-week-glance-bar" aria-hidden="true"><div style={{width:`${lista.length&&vigenteParaRegistrar?Math.min(100,Math.round((pagaron/lista.length)*100)):0}%`}}/></div>
           </section>}
-          {reporteError&&<div className="ag-error" role="alert"><AlertTriangle size={18}/>{reporteError}</div>}
-          {reporteFondos&&!reporteFondos.cifrasConfiables&&<div className="ag-error"><AlertTriangle size={18}/> Existen retiros que necesitan conciliación antes de utilizar estos saldos.</div>}
-          {generacionId==='gen-2026-2027-A-507'&&reporteFondos?.conciliacion507&&!reporteFondos.conciliacion507.conciliado&&<div className="ag-error"><AlertTriangle size={18}/> Revisa el reparto de aportaciones del 507 antes de realizar operaciones nuevas.</div>}
+          {esAdmin&&reporteError&&<div className="ag-error" role="alert"><AlertTriangle size={18}/>{reporteError}</div>}
+          {esAdmin&&reporteFondos&&!reporteFondos.cifrasConfiables&&<div className="ag-error"><AlertTriangle size={18}/> Existen retiros que necesitan conciliación antes de utilizar estos saldos.</div>}
+          {esAdmin&&generacionId==='gen-2026-2027-A-507'&&reporteFondos?.conciliacion507&&!reporteFondos.conciliacion507.conciliado&&<div className="ag-error"><AlertTriangle size={18}/> Revisa el reparto de aportaciones del 507 antes de realizar operaciones nuevas.</div>}
           {!datos?.meta && !cargando&&<div className="ag-empty"><BookOpen size={31}/><h3>Este salón todavía no está configurado</h3><p>Un administrador debe importar la lista del Excel o crear un salón en «Ciclos y salones».</p><SmallButton onClick={()=>setVista('gestion')}>Ver configuración</SmallButton></div>}
           <details className={`ag-disclosure ag-roster-disclosure${esAdmin?' is-admin':''}`} open={esAdmin}>
             {!esAdmin&&<summary><span><UsersRound size={19}/> Compañeros del salón</span><span className="ag-disclosure-hint">Ver lista</span></summary>}
@@ -959,7 +959,7 @@ export default function App() {
             <div className="ag-list-foot">{vigenteParaRegistrar?`${pagaron} pagaron · ${pendientes} pendientes`:'No hay desglose disponible para esta semana'}</div>
           </Panel>}
           </details>
-          <details className="ag-disclosure ag-finance-disclosure">
+          {esAdmin&&<details className="ag-disclosure ag-finance-disclosure">
             <summary><span><Wallet size={19}/> Resumen de fondos</span><span className="ag-disclosure-hint">Ver desglose</span></summary>
             <div className="ag-disclosure-body">
           <section className="ag-summary">
@@ -997,8 +997,8 @@ export default function App() {
           </Panel>
 
             </div>
-          </details>
-          {datos?.meta&&<details className="ag-disclosure ag-history-disclosure">
+          </details>}
+          {esAdmin&&datos?.meta&&<details className="ag-disclosure ag-history-disclosure">
             <summary><span><History size={19}/> Historial de movimientos</span><span className="ag-disclosure-hint">Ver historial</span></summary>
             <div className="ag-disclosure-body">
           {esCorteEnSalon&&datos?.meta&&<Panel title="Pagos históricos anteriores al reinicio" icon={History}>
@@ -1033,7 +1033,7 @@ export default function App() {
          </Panel></div></details>}
         <details className="ag-disclosure ag-notices-disclosure">
           <summary><span><BellRing size={19}/> Avisos de movimientos {avisosGlobales.length>0?`(${avisosGlobales.length})`:''}</span><span className="ag-disclosure-hint">Ver avisos</span></summary>
-          <div className="ag-disclosure-body"><Panel title="Avisos de movimientos y retiros" icon={BellRing} action={<SmallButton onClick={permitirAvisos}><Bell size={16}/> Permitir avisos</SmallButton>}><p className="ag-muted">Los retiros ya realizados de Industrial aparecen para todos los salones. También se descuentan automáticamente del fondo general; las notificaciones del dispositivo funcionan cuando la aplicación está abierta y el permiso está activado.</p>
+          <div className="ag-disclosure-body"><Panel title={esAdmin?'Avisos de movimientos y retiros':'Avisos de movimientos'} icon={BellRing} action={<SmallButton onClick={permitirAvisos}><Bell size={16}/> Permitir avisos</SmallButton>}><p className="ag-muted">Los retiros ya realizados de Industrial aparecen para todos los salones. También se descuentan automáticamente del fondo general; las notificaciones del dispositivo funcionan cuando la aplicación está abierta y el permiso está activado.</p>
           {avisosGlobales.map(a=><div className="ag-withdrawal" key={a.id}>
             <div className="ag-withdrawal-head"><span className="ag-status ag-status-aprobado">Retiro de Industrial · Realizado</span><strong>−{pesos(a.monto)}</strong></div>
             <small>{fechaLarga(a.fecha)} · Descontado del fondo general</small>
