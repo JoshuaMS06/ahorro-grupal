@@ -990,13 +990,18 @@ export default function App() {
 
             </div>
           </details>
+          {datos?.meta&&<details className="ag-disclosure ag-history-disclosure">
+            <summary><span><History size={19}/> Historial de movimientos</span><span className="ag-disclosure-hint">Ver historial</span></summary>
+            <div className="ag-disclosure-body">
           {esCorteEnSalon&&datos?.meta&&<Panel title="Pagos históricos anteriores al reinicio" icon={History}>
             <p className="ag-muted">Registro histórico independiente (numeración original). Estas aportaciones no se suman al fondo nuevo de Ingeniería Industrial. Ninguna semana anterior genera deuda automática.</p>
             <p className="ag-note">{resumenAnterior.registros} pagos históricos activos · {pesos(resumenAnterior.importeHistorico)} de importe registrado en esta sección (NO es saldo disponible).</p>
             <div className="ag-timeline">{pagosHistAnteriores.slice(0,100).map(p=><div className="ag-timeline-row" key={p.id}><span className={`ag-timeline-mark ${p.estado==='pagado'?'ok':'cancel'}`}>{p.estado==='pagado'?<Check size={16}/>:<X size={16}/>}</span><div><strong>{nombreParaMostrar(integrantes[p.estudianteId]?.nombre||p.nombre||'Integrante',p.estudianteId,integrantes[p.estudianteId]?.formatoNombre)}</strong><small>{etiquetaSemana(periodoId,p.semana)} · {fechaLarga(p.creadoEn)} {p.estado==='anulado'?'· Anulación':''}{p.motivo?` · ${p.motivo}`:''}</small></div><b>{p.estado==='pagado'?'+':'−'}{pesos(p.monto)}</b></div>)}{!pagosHistAnteriores.length&&<p className="ag-muted">No hay capturas históricas nuevas. Los registros originales anteriores al reinicio permanecen intactos.</p>}</div>
           </Panel>}
           {datos?.meta&&<Panel title="Historial de aportaciones" icon={History}><p className="ag-muted">Movimientos del nuevo ahorro. Los registros anteriores permanecen respaldados y no se suman.</p><div className="ag-timeline">{pagosHist.slice(0,100).map(p=><div className="ag-timeline-row" key={p.id}><span className={`ag-timeline-mark ${p.estado==='pagado'?'ok':'cancel'}`}>{p.estado==='pagado'?<Check size={16}/>:<X size={16}/>}</span><div><strong title={p.nombre||integrantes[p.estudianteId]?.nombre||''}>{nombreParaMostrar(integrantes[p.estudianteId]?.nombre||p.nombre||'Integrante',p.estudianteId,integrantes[p.estudianteId]?.formatoNombre)}</strong><small>{etiquetaSemana(periodoId,p.semana)} · {fechaLarga(p.creadoEn)} {p.estado==='anulado'?'· Anulación':''}{p.motivo?` · ${p.motivo}`:''}</small></div><b>{p.estado==='pagado'?'+':'−'}{pesos(p.monto)}</b></div>)}{!pagosHist.length&&<p className="ag-muted">Todavía no hay pagos semanales detallados para este salón.</p>}</div></Panel>}
-        {esAdmin&&!periodo?.meta?.cerradoEn&&datos?.meta&&(periodoId!=='2026-2027-A'||ahorroNuevoActivo)&&<Panel title="Retirar ahorro de mi salón" icon={ArrowDownRight}>
+                    </div>
+          </details>}
+          {esAdmin&&!periodo?.meta?.cerradoEn&&datos?.meta&&(periodoId!=='2026-2027-A'||ahorroNuevoActivo)&&<Panel title="Retirar ahorro de mi salón" icon={ArrowDownRight}>
            <p className="ag-muted">Retira directamente, sin escribir una justificación y sin esperar aprobación. Solo puedes retirar dinero disponible de tu propio grupo; el movimiento quedará registrado con fecha, importe y responsable.</p>
            <form className="ag-simple-form" onSubmit={solicitarRetiro}>
              {generacionId==='gen-2026-2027-A-507'&&<label>¿De qué fondo quieres retirar?
