@@ -13,7 +13,8 @@ test('recordar el propio nombre solo en este dispositivo y por salón/ciclo',()=
  assert.equal(registro[claveRegistroPersonal('2026-2027-A','507')],'alumno507');
  assert.equal(leerRegistrosFijados(local)['2026-2027-A/107'],'alumno107');
  assert.equal(leerRegistrosFijados(local)['2026-2027-A/507'],'alumno507');
- registro=fijarRegistroPersonal(registro,'2026-2027-A','507',null,local);
+ const despues=fijarRegistroPersonal(registro,'2026-2027-A','507',null,local);
+ assert.equal(despues['2026-2027-A/507'],undefined);
  assert.equal(leerRegistrosFijados(local)['2026-2027-A/507'],undefined);
  assert.equal(leerRegistrosFijados(local)['2026-2027-A/107'],'alumno107');
 });
