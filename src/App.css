@@ -59,3 +59,86 @@
 .ag-modal label:has(.ag-invitation-url){display:flex;flex-direction:column;gap:8px;margin:12px 0;
   color:#e6d7f7;font-size:13px}
 .ag-modal:has(.ag-invitation-url) .ag-btn{width:100%;justify-content:center;display:flex;gap:8px;margin:8px 0}
+
+/* UX 2026 · Captura rápida y pantalla de estudiantes más clara */
+.ag-intro-compact{align-items:center;margin:5px 0 16px;gap:12px}
+.ag-intro-compact .ag-kicker{font-size:11px;letter-spacing:.09em}
+.ag-intro-compact h1{font-size:clamp(23px,3vw,30px);letter-spacing:-.6px;margin:5px 0 0}
+.ag-intro-compact .ag-week-pill{flex:none;padding:10px 12px;border-radius:13px;font-size:13px}
+.ag-tabs{gap:9px;margin:0 0 14px;padding-bottom:3px}
+.ag-tabs button{border-radius:12px 12px 0 0;padding:11px 15px;font-size:13px;cursor:pointer}
+.ag-tabs button:hover{background:#302044;color:#f2e8ff}
+.ag-week-glance{display:flex;flex-direction:column;gap:12px;margin:0 0 14px;padding:17px 19px;
+ border:1px solid #8158b1;border-radius:19px;background:linear-gradient(130deg,#39234f,#2a1d3d 65%,#32234a)}
+.ag-week-glance-heading{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.ag-week-glance-heading>span{display:flex;align-items:center;gap:8px;color:#e5d5f5;font-weight:850;font-size:14px}
+.ag-week-glance-heading>strong{color:#bca8d2;font-weight:600;font-size:12px}
+.ag-week-glance-numbers{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.ag-week-glance-numbers>div{display:flex;flex-direction:column;gap:3px}
+.ag-week-glance-numbers strong{font-size:clamp(21px,4.4vw,28px);line-height:1.1;color:#fff;font-variant-numeric:tabular-nums}
+.ag-week-glance-numbers span{font-size:11px;color:#d5c4e5}
+.ag-week-glance-bar{height:7px;background:#564167;border-radius:999px;overflow:hidden}
+.ag-week-glance-bar>div{height:100%;background:linear-gradient(90deg,#b784f0,#d5a5ff);border-radius:999px;transition:width .22s ease}
+.ag-disclosure{border:1px solid #493661;border-radius:17px;background:#21172e;margin:12px 0;overflow:clip}
+.ag-disclosure>summary{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:16px 17px;
+ color:#f1e7fd;cursor:pointer;font-size:15px;font-weight:800;list-style:none;user-select:none}
+.ag-disclosure>summary::-webkit-details-marker{display:none}
+.ag-disclosure>summary:hover,.ag-disclosure>summary:focus-visible{background:#362448;outline:2px solid transparent}
+.ag-disclosure>summary:focus-visible{outline:2px solid #cea3fc;outline-offset:-2px}
+.ag-disclosure>summary>span:first-child{display:flex;align-items:center;gap:11px;min-width:0}
+.ag-disclosure>summary svg{color:#c9a4f6;flex:none}
+.ag-disclosure-hint{font-size:12px;color:#c6b3dc;white-space:nowrap;font-weight:600}
+.ag-disclosure-hint:after{content:'⌄';display:inline-block;margin-left:8px;font-size:19px;vertical-align:middle}
+.ag-disclosure[open]>.ag-disclosure-hint:after,.ag-disclosure[open]>summary .ag-disclosure-hint:after{content:'⌃'}
+.ag-disclosure-body{padding:0 13px 12px}
+.ag-disclosure-body>.ag-panel{margin:12px 0 0;padding:16px;border-radius:15px}
+.ag-disclosure-body>.ag-summary{margin:10px 0 14px}
+.ag-disclosure-body>.ag-summary .ag-balance{min-height:0;padding:20px}
+.ag-roster-disclosure.is-admin{border:0;background:none;border-radius:0;margin:0;overflow:visible}
+.ag-roster-disclosure.is-admin>.ag-panel{margin:0 0 12px}
+.ag-roster-disclosure:not(.is-admin)>.ag-panel{margin:0 13px 13px}
+.ag-roster-disclosure:not(.is-admin)[open]{padding-bottom:1px}
+.ag-student-list{gap:8px;margin-top:13px}
+.ag-student{flex-wrap:nowrap;gap:11px;padding:11px 13px;min-height:58px;border-radius:15px;
+ transition:border-color .15s ease,background .15s ease}
+.ag-student:has(.ag-pay-actions){min-height:62px}
+.ag-student-pinned{border-color:#aa7be3;background:#352246;box-shadow:inset 3px 0 #b887f6}
+.ag-student .ag-avatar{flex:none;width:40px;height:40px;min-width:40px;border-radius:13px}
+.ag-student-info{flex:1;min-width:0;flex-basis:auto}
+.ag-student-info strong{font-size:clamp(16px,3.6vw,18px);font-weight:800;line-height:1.2;letter-spacing:-.15px}
+.ag-student-info small{display:none}
+.ag-student .ag-status{font-size:12px;padding:7px 10px;max-width:100%;flex:none}
+.ag-pay-actions{margin-left:0;flex:none}
+.ag-pay-actions button{width:39px;height:39px;border-radius:12px;cursor:pointer}
+.ag-pay-actions button:disabled{opacity:.55;cursor:not-allowed}
+.ag-filters button{font-size:12px;padding:10px 12px;cursor:pointer}
+.ag-filters button.active{background:#6f49a0}
+.ag-roster-disclosure .ag-panel-heading{gap:8px}
+.ag-roster-disclosure .ag-panel-heading h2{font-size:18px}
+.ag-roster-disclosure .ag-panel{border-color:#4e3867}
+.ag-list-foot{font-size:12px;text-align:left;margin-top:12px}
+.ag-general-hero{padding:23px;margin:8px 0 15px}
+.ag-general-amount{font-size:clamp(31px,5vw,45px);margin:12px 0 6px}
+.ag-general-hero>p{margin:0}
+.ag-general-metrics>div{padding:13px;gap:6px}
+.ag-general-metrics strong{font-size:24px}
+@media(max-width:590px){
+ .ag-intro-compact{flex-direction:row;align-items:center;justify-content:space-between;margin-bottom:13px}
+ .ag-intro-compact h1{font-size:22px}
+ .ag-intro-compact .ag-week-pill{gap:6px;padding:9px 10px;font-size:12px}
+ .ag-student{flex-wrap:nowrap;gap:8px;padding:10px 9px}
+ .ag-student .ag-avatar{width:37px;height:37px;min-width:37px}
+ .ag-student-info{flex:1;flex-basis:auto}
+ .ag-student-info strong{font-size:16px}
+ .ag-student .ag-status{font-size:11px;padding:6px 8px}
+ .ag-pay-actions{margin-left:0}
+ .ag-pay-actions button{width:37px;height:37px}
+ .ag-disclosure>summary{padding:14px 12px}
+ .ag-disclosure-body{padding:0 9px 10px}
+ .ag-disclosure-body>.ag-panel{padding:12px}
+ .ag-week-glance{padding:16px 13px}
+ .ag-week-glance-heading>strong{font-size:11px}
+ .ag-tabs button{font-size:12px;padding:10px 11px}
+}
+@media(max-width:350px){.ag-student-info strong{font-size:15px}.ag-student .ag-avatar{width:33px;height:33px;min-width:33px}.ag-student .ag-status{padding:5px 6px;font-size:10px}.ag-pay-actions button{width:33px;height:33px}}
+@media(prefers-reduced-motion:reduce){.ag-student,.ag-week-glance-bar>div{transition:none}}
