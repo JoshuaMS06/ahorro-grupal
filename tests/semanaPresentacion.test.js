@@ -53,7 +53,7 @@ test('no inventa fechas en ciclos sin calendario válido',()=>{
  assert.equal(numeroSemanaVisible('2027-2028-A',3),3);
  assert.equal(rangoFechasSemana('2027-2028-A',3),'');
  assert.equal(fechasSemana('2027-2028-A',3,{lunesBase:'lunes',semanaBase:3}),null);
- assert.throws(()=>etiquetaSemana(period,0,meta),/inválida/);
+ assert.throws(()=>etiquetaSemana(periodo,0,meta),/inválida/);
 });
 
 test('una fecha visible NO altera la llave ni el importe de un pago existente',()=>{
@@ -61,7 +61,7 @@ test('una fecha visible NO altera la llave ni el importe de un pago existente',(
  assert.equal(semanaInterna,6);
  assert.equal(pagoClave('e001',semanaInterna),'e001_s0006');
  assert.equal(etiquetaSemana(period,semanaInterna,meta),'Semana 1 de noviembre');
- const aviso=textoConfirmacionRestaurarPago(period,semanaInterna,'Alumno de prueba',meta);
+ const aviso=textoConfirmacionRestaurarPago(periodo,semanaInterna,'Alumno de prueba',meta);
  assert.match(aviso,/Alumno de prueba \(Semana 1 de noviembre\)/);
  assert.doesNotMatch(aviso,/Histórica|Semana 6/);
  assert.match(aviso,/historial/);
