@@ -898,6 +898,9 @@ export default function App() {
             {reporteError&&<div className="ag-error"><AlertTriangle size={17}/>{reporteError}</div>}
             {reporteFondos&&!reporteFondos.cifrasConfiables&&<div className="ag-note"><AlertTriangle size={17}/> Hay retiros antiguos por clasificar. El saldo disponible se oculta hasta conciliarlos.</div>}
           </section>
+          <details className="ag-disclosure ag-extra-disclosure">
+            <summary><span><CircleDollarSign size={19}/> Añadir dinero extra</span><span className="ag-disclosure-hint">Abrir</span></summary>
+            <div className="ag-disclosure-body">
           <Panel title="Añadir dinero extra al fondo general" icon={CircleDollarSign}>
             <p className="ag-muted">Agrega directamente un importe a Industrial, sin seleccionar alumnos o salones ni escribir motivos. El extra aumenta el fondo general y no modifica las aportaciones de los grupos.</p>
             <form className="ag-simple-form" onSubmit={ingresarExtraGeneral}>
@@ -911,6 +914,8 @@ export default function App() {
             </form>
             <p className="ag-muted">Ingresos extra acumulados: <strong>{reporteFondos?pesos(reporteFondos.extraIngresado||0):'—'}</strong>. Los movimientos se respaldan de forma privada para mantener los cálculos correctos.</p>
           </Panel>
+            </div>
+          </details>
           <section className="ag-general-metrics" aria-label="Resumen del ciclo">
             <div><UsersRound size={22}/><strong>{Object.keys(periodo?.salones||{}).length}</strong><span>Salones del ciclo</span></div>
             <div><UserCog size={22}/><strong>{Object.values(responsables?.[periodoId]||{}).reduce((n,p)=>n+Object.values(p||{}).filter(Boolean).length,0)}</strong><span>Responsables asignados</span></div>
@@ -1001,7 +1006,9 @@ export default function App() {
           {datos?.meta&&<Panel title="Historial de aportaciones" icon={History}><p className="ag-muted">Movimientos del nuevo ahorro. Los registros anteriores permanecen respaldados y no se suman.</p><div className="ag-timeline">{pagosHist.slice(0,100).map(p=><div className="ag-timeline-row" key={p.id}><span className={`ag-timeline-mark ${p.estado==='pagado'?'ok':'cancel'}`}>{p.estado==='pagado'?<Check size={16}/>:<X size={16}/>}</span><div><strong title={p.nombre||integrantes[p.estudianteId]?.nombre||''}>{nombreParaMostrar(integrantes[p.estudianteId]?.nombre||p.nombre||'Integrante',p.estudianteId,integrantes[p.estudianteId]?.formatoNombre)}</strong><small>{etiquetaSemana(periodoId,p.semana)} · {fechaLarga(p.creadoEn)} {p.estado==='anulado'?'· Anulación':''}{p.motivo?` · ${p.motivo}`:''}</small></div><b>{p.estado==='pagado'?'+':'−'}{pesos(p.monto)}</b></div>)}{!pagosHist.length&&<p className="ag-muted">Todavía no hay pagos semanales detallados para este salón.</p>}</div></Panel>}
                     </div>
           </details>}
-          {esAdmin&&!periodo?.meta?.cerradoEn&&datos?.meta&&(periodoId!=='2026-2027-A'||ahorroNuevoActivo)&&<Panel title="Retirar ahorro de mi salón" icon={ArrowDownRight}>
+          {esAdmin&&!periodo?.meta?.cerradoEn&&datos?.meta&&(periodoId!=='2026-2027-A'||ahorroNuevoActivo)&&<details className="ag-disclosure ag-withdraw-disclosure">
+          <summary><span><ArrowDownRight size={19}/> Retirar dinero del salón</span><span className="ag-disclosure-hint">Abrir</span></summary>
+          <div className="ag-disclosure-body"><Panel title="Retirar ahorro de mi salón" icon={ArrowDownRight}>
            <p className="ag-muted">Retira directamente, sin escribir una justificación y sin esperar aprobación. Solo puedes retirar dinero disponible de tu propio grupo; el movimiento quedará registrado con fecha, importe y responsable.</p>
            <form className="ag-simple-form" onSubmit={solicitarRetiro}>
              {generacionId==='gen-2026-2027-A-507'&&<label>¿De qué fondo quieres retirar?
@@ -1019,15 +1026,17 @@ export default function App() {
              </label>
              <SmallButton type="submit" variant="primary" disabled={!!operacion||!reporteFondos?.cifrasConfiables}><ArrowDownRight size={17}/> Retirar y descontar</SmallButton>
            </form>
-           <p className="ag-muted">Confirmarás el importe antes del descuento. El retiro queda en el historial y no cambia pagos anteriores.</p>
-         </Panel>}
-        <Panel title="Avisos de movimientos y retiros" icon={BellRing} action={<SmallButton onClick={permitirAvisos}><Bell size={16}/> Permitir avisos</SmallButton>}><p className="ag-muted">Los retiros ya realizados de Industrial aparecen para todos los salones. También se descuentan automáticamente del fondo general; las notificaciones del dispositivo funcionan cuando la aplicación está abierta y el permiso está activado.</p>
+           <p className="ag-muted">El importe se confirma antes de descontarlo y queda registrado.</p>
+         </Panel></div></details>}
+        <details className="ag-disclosure ag-notices-disclosure">
+          <summary><span><BellRing size={19}/> Avisos de movimientos {avisosGlobales.length>0?`(${avisosGlobales.length})`:''}</span><span className="ag-disclosure-hint">Ver avisos</span></summary>
+          <div className="ag-disclosure-body"><Panel title="Avisos de movimientos y retiros" icon={BellRing} action={<SmallButton onClick={permitirAvisos}><Bell size={16}/> Permitir avisos</SmallButton>}><p className="ag-muted">Los retiros ya realizados de Industrial aparecen para todos los salones. También se descuentan automáticamente del fondo general; las notificaciones del dispositivo funcionan cuando la aplicación está abierta y el permiso está activado.</p>
           {avisosGlobales.map(a=><div className="ag-withdrawal" key={a.id}>
             <div className="ag-withdrawal-head"><span className="ag-status ag-status-aprobado">Retiro de Industrial · Realizado</span><strong>−{pesos(a.monto)}</strong></div>
             <small>{fechaLarga(a.fecha)} · Descontado del fondo general</small>
           </div>)}
           {!avisosGlobales.length&&<p className="ag-muted">Todavía no hay avisos compartidos de retiros de Industrial.</p>}
-          {!datos?.meta?<div className="ag-empty-small">Selecciona un salón configurado.</div>:<div className="ag-timeline">{avisosVisibles.map(r=><div key={r.id} className="ag-withdrawal"><div className="ag-withdrawal-head"><span className={`ag-status ag-status-${r.estado}`}>{r.estado==='solicitado'?'Solicitud de retiro':r.estado==='aprobado'?(r.tipo==='directo'?'Retiro realizado':'Retiro aprobado'):'Solicitud rechazada'}</span><strong>{pesos(r.monto)}</strong></div>{r.motivo&&r.motivo!=='Retiro directo'&&<p>{r.motivo}</p>}<small>{fechaLarga(r.creadoEn)} {r.respondidoEn?`· Resuelto ${fechaLarga(r.respondidoEn)}`:''}</small>{esAdminGeneral&&r.fondo==='carrera'&&!periodo?.meta?.cerradoEn&&r.estado==='solicitado'&&<div className="ag-withdrawal-buttons"><SmallButton disabled={!!operacion} onClick={()=>resolverRetiro(r,'aprobado')} variant="primary"><Check size={16}/> Aprobar y descontar</SmallButton><SmallButton disabled={!!operacion} onClick={()=>resolverRetiro(r,'rechazado')}>Rechazar</SmallButton></div>}</div>)}{!avisosVisibles.length&&<p className="ag-muted">No existen avisos de retiro para este salón.</p>}</div>}</Panel></>}
+          {!datos?.meta?<div className="ag-empty-small">Selecciona un salón configurado.</div>:<div className="ag-timeline">{avisosVisibles.map(r=><div key={r.id} className="ag-withdrawal"><div className="ag-withdrawal-head"><span className={`ag-status ag-status-${r.estado}`}>{r.estado==='solicitado'?'Solicitud de retiro':r.estado==='aprobado'?(r.tipo==='directo'?'Retiro realizado':'Retiro aprobado'):'Solicitud rechazada'}</span><strong>{pesos(r.monto)}</strong></div>{r.motivo&&r.motivo!=='Retiro directo'&&<p>{r.motivo}</p>}<small>{fechaLarga(r.creadoEn)} {r.respondidoEn?`· Resuelto ${fechaLarga(r.respondidoEn)}`:''}</small>{esAdminGeneral&&r.fondo==='carrera'&&!periodo?.meta?.cerradoEn&&r.estado==='solicitado'&&<div className="ag-withdrawal-buttons"><SmallButton disabled={!!operacion} onClick={()=>resolverRetiro(r,'aprobado')} variant="primary"><Check size={16}/> Aprobar y descontar</SmallButton><SmallButton disabled={!!operacion} onClick={()=>resolverRetiro(r,'rechazado')}>Rechazar</SmallButton></div>}</div>)}{!avisosVisibles.length&&<p className="ag-muted">No existen avisos de retiro para este salón.</p>}</div>}</Panel></div></details></>}
         {vistaActiva==='consulta'&&esAdmin&&<Panel title="Aportaciones de los salones a la carrera" icon={UsersRound}>
           <ConsultaSalones usuario={usuario} periodoId={periodoId} salonActual={salonId}/>
         </Panel>}
