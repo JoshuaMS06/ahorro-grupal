@@ -526,14 +526,13 @@ export default function App() {
       &&m.estado!=='conflicto'
       &&(esAdminGeneral||(m.periodo===periodoId&&m.salon===salonId)));
     if(!listos.length)return;
-    let cancelado=false;
     sincronizandoRef.current=true;
     const procesar=async()=>{
       let resultado=pendientesOffline,cambios=false;
       setSincronizandoOffline(true);
       try{
         for(const m of listos){
-          if(cancelado||auth.currentUser?.uid!==m.uid)break;
+          if(auth.currentUser?.uid!==m.uid)break;
           try{
             const token=await usuario.getIdToken();
             const respuesta=await fetch('/api/resolver-retiro',{
@@ -562,14 +561,14 @@ export default function App() {
         }
       }finally{
         sincronizandoRef.current=false;
-        if(!cancelado){
-          if(cambios)setPendientesOffline(resultado);
-          setSincronizandoOffline(false);
-        }
+        if(cambios)setPendientesOffline(resultado);
+        setSincronizandoOffline(false);
       }
     };
+    // No cancelar el lote al recibir un onValue de Firebase: cada pago
+    // confirmado provoca un render y de otro modo quedarían pagos varados.
+    // La autorización se verifica en CADA llamada y el UID se comprueba arriba.
     void procesar();
-    return ()=>{cancelado=true;};
   },[enLinea,esAdmin,esAdminGeneral,usuario,dataSnapshot?.source,pendientesOffline,
       periodoId,salonId,reintentarOffline]);
 
