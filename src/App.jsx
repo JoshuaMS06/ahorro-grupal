@@ -592,6 +592,12 @@ export default function App() {
   const detalleSemana=lista.map(e=>({...e,estado:estadoAlumno(e)}));
   const pagaron=detalleSemana.filter(e=>estadoAlumno(e)==='pagado').length;
   const pendientes=detalleSemana.filter(e=>estadoAlumno(e)==='pendiente').length;
+  // Las capturas locales NO aumentan el número de pagos confirmados.
+  const pagaronConfirmados=vigenteParaRegistrar?lista.filter(e=>
+    (esAnterior&&esPagoLegado(pagosLegado,e.id,semana))
+    ||estadoSemana(pagosSemana,e.id,semana)==='pagado').length:0;
+  const pagaronEnResumen=enLinea?pagaron:pagaronConfirmados;
+  const pendientesEnResumen=enLinea?pendientes:lista.length-pagaronConfirmados;
   const consulta=normalizarBusquedaNombre(search.trim());
   const visible=detalleSemana.filter(e=>!consulta||normalizarBusquedaNombre([e.nombreVisible,e.nombre,e.aliasLegado,e.control].join(' ')).includes(consulta)).filter(e=>filtro==='todos'||estadoAlumno(e)===filtro)
     .sort((a,b)=>!esAdmin&&registroFijado?(a.id===registroFijado?-1:b.id===registroFijado?1:0):0);
@@ -1217,11 +1223,11 @@ export default function App() {
           {esAdmin&&<section className="ag-week-glance" aria-label="Avance semanal">
             <div className="ag-week-glance-heading"><span><CalendarClock size={18}/> {etiquetaSemana(periodoId,semana,periodo?.meta)}</span><strong>{cargando?'—':lista.length} estudiantes</strong></div>
             <div className="ag-week-glance-numbers">
-              <div><strong>{vigenteParaRegistrar?pagaron:'—'}</strong><span>Pagaron</span></div>
-              <div><strong>{vigenteParaRegistrar?pendientes:'—'}</strong><span>Pendientes</span></div>
+              <div><strong>{vigenteParaRegistrar?pagaronEnResumen:'—'}</strong><span>{enLinea?'Pagaron':'Confirmados en la última copia'}</span></div>
+              <div><strong>{vigenteParaRegistrar?pendientesEnResumen:'—'}</strong><span>Pendientes</span></div>
               <div><strong>{pesos(cuotaSemanal)}</strong><span>Por semana</span></div>
             </div>
-            <div className="ag-week-glance-bar" aria-hidden="true"><div style={{width:`${lista.length&&vigenteParaRegistrar?Math.min(100,Math.round((pagaron/lista.length)*100)):0}%`}}/></div>
+            <div className="ag-week-glance-bar" aria-hidden="true"><div style={{width:`${lista.length&&vigenteParaRegistrar?Math.min(100,Math.round((pagaronEnResumen/lista.length)*100)):0}%`}}/></div>
           </section>}
           {esAdmin&&reporteError&&<div className="ag-error" role="alert"><AlertTriangle size={18}/>{reporteError}</div>}
           {esAdmin&&reporteFondos&&!reporteFondos.cifrasConfiables&&<div className="ag-error"><AlertTriangle size={18}/> Existen retiros que necesitan conciliación antes de utilizar estos saldos.</div>}
@@ -1235,7 +1241,10 @@ export default function App() {
             <div className="ag-toolbar"><label className="ag-search"><Search size={17}/><input placeholder="Buscar por nombre o control..." value={search} onChange={e=>setSearch(e.target.value)}/></label><div className="ag-filters"><button className={filtro==='todos'?'active':''} onClick={()=>setFiltro('todos')}>Todos</button><button className={filtro==='pagado'?'active':''} onClick={()=>setFiltro('pagado')}>Pagaron</button><button className={filtro==='pendiente'?'active':''} onClick={()=>setFiltro('pendiente')}>{esAnterior?'Sin registrar':'Pendientes'}</button></div></div>
             {!vigenteParaRegistrar&&<div className="ag-note"><History size={16}/> Esta semana corresponde al historial anterior o a un periodo sin registros detallados. No se muestran supuestos adeudos.</div>}
             <div className="ag-student-list">{visible.map(e=>{const estado=estadoAlumno(e),pendienteLocal=pendienteDe(e);return <article className={`ag-student${!esAdmin&&registroFijado===e.id?' ag-student-pinned':''}`} key={e.id}><span className="ag-avatar" aria-hidden="true"><UserRound size={22} strokeWidth={2.2}/></span><div className="ag-student-info"><strong title={e.nombre}>{e.nombreVisible}</strong></div><span className={`ag-status ag-status-${estado}`}>{estado==='pagado'?<><Check size={14}/> Pagó</>:estado==='pendiente'?(esAnterior?'Sin registrar':'Pendiente'):'Sin desglose'}</span>{pendienteLocal&&<span className="ag-local-indicator">Sin sincronizar</span>}{esAdmin&&vigenteParaRegistrar&&!vacacionesActivas&&!periodo?.meta?.cerradoEn&&<div className="ag-pay-actions">{estado==='pagado' ? (esAnterior&&esPagoLegado(pagosLegado,e.id,semana) ? <span title="Pago legado conservado; no se puede modificar aquí"><LockKeyhole size={18}/></span> : <button title="Anular el pago (un toque; se conserva en el historial)" aria-label={`Anular aporte de ${e.nombreVisible} en ${etiquetaSemana(periodoId,semana,periodo?.meta)}`} disabled={!!operacion||sincronizandoOffline||(enLinea&&!!pendienteLocal)} onClick={()=>anularPago(e)}><Minus size={17}/></button>) : <button title={`Registrar ${pesos(cuotaSemanal)} esta semana`} disabled={!!operacion||sincronizandoOffline||(enLinea&&!!pendienteLocal)} onClick={()=>registrarPago(e)}><Plus size={18}/></button>}</div>}</article>;})}{!visible.length&&<div className="ag-empty-small">No hay integrantes para este filtro.</div>}</div>
-            <div className="ag-list-foot">{vigenteParaRegistrar?`${pagaron} pagaron · ${pendientes} pendientes`:'No hay desglose disponible para esta semana'}</div>
+            <div className="ag-list-foot">{vigenteParaRegistrar?(enLinea
+  ?`${pagaron} pagaron · ${pendientes} pendientes`
+  :`${pagaronConfirmados} confirmados en la última copia · ${movimientosActuales.length} cambios sin sincronizar`)
+  :'No hay desglose disponible para esta semana'}</div>
           </Panel>}
           </details>
           {esAdmin&&<details className="ag-disclosure ag-finance-disclosure">
