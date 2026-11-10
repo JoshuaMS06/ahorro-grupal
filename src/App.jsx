@@ -19,6 +19,8 @@ import { distribucionNueva, generacionDeAula, resumirFondos } from '../lib/fondo
 import { informeVisibleSegunRol } from '../lib/informeRoles.js';
 import {listarAvisosCarrera} from '../lib/avisosCarrera.js';
 import {claveRegistroPersonal,leerRegistrosFijados,fijarRegistroPersonal} from '../lib/registroPersonal.js';
+import {guardarVistaOffline,leerVistaOffline,leerPendientesOffline,guardarPendienteOffline,eliminarPendienteOffline,claveMovimiento} from '../lib/offlineStore.js';
+import {crearCambioPendiente,versionPago,cambiarDeseado} from '../lib/offlinePayments.js';
 import MiRegistro from './MiRegistro.jsx';
 import { periodoSiguiente, salonSiguiente } from '../lib/semestres.js';
 import { prepararExcel, revisarCoincidencias } from '../lib/importarExcel.js';
@@ -87,6 +89,12 @@ export default function App() {
   const [salonId,setSalonId]=useState(()=>localStorage.getItem('ag:salon')||'507');
   const [dataSnapshot,setDataSnapshot]=useState(null);
   const [cargando,setCargando]=useState(true);
+  const [enLinea,setEnLinea]=useState(()=>navigator.onLine);
+  const [vistaOffline,setVistaOffline]=useState(null);
+  const [pendientesOffline,setPendientesOffline]=useState([]);
+  const [sincronizandoOffline,setSincronizandoOffline]=useState(false);
+  const [reintentarOffline,setReintentarOffline]=useState(0);
+  const sincronizandoRef=useRef(false);
   const [dbError,setDbError]=useState('');
   const [usuario,setUsuario]=useState(null);
   const [uidAdminGeneral,setUidAdminGeneral]=useState('');
@@ -132,13 +140,19 @@ export default function App() {
   const primerEvento=useRef(null);
   const inicioEscuchaAvisos=useRef(0);
   const intentoIngresoExtra=useRef(null);
-  const esAdminGeneral=Boolean(usuario && uidAdminGeneral && uidAdminGeneral===usuario.uid);
-  const esResponsable=Boolean(usuario && !esAdminGeneral && esResponsableDeSalon(asignacion,periodoId,salonId));
+  const vistaLocalAutorizada=!enLinea&&vistaOffline?.uid===usuario?.uid
+    &&vistaOffline?.periodo===periodoId&&vistaOffline?.salon===salonId;
+  const esAdminGeneral=Boolean(usuario && ((uidAdminGeneral && uidAdminGeneral===usuario.uid)
+    ||(vistaLocalAutorizada&&vistaOffline.rol==='general')));
+  const esResponsable=Boolean(usuario && !esAdminGeneral
+    &&(esResponsableDeSalon(asignacion,periodoId,salonId)
+      ||(vistaLocalAutorizada&&vistaOffline.rol==='responsable')));
   const esAdmin=esAdminGeneral || esResponsable;
   const esLector=Boolean(usuario && !esAdmin && asignacionLector?.periodo===periodoId && asignacionLector?.salon===salonId);
-  const esInvitadoCodigo=Boolean(usuario && sesionCodigo?.periodo===periodoId && sesionCodigo?.salon===salonId);
+  const esInvitadoCodigo=Boolean(usuario && ((sesionCodigo?.periodo===periodoId && sesionCodigo?.salon===salonId)
+    ||(vistaLocalAutorizada&&vistaOffline.rol==='alumno')));
   const tieneAcceso=esAdmin || esLector || esInvitadoCodigo;
-  const vistaActiva=esAdminGeneral?vista:(esResponsable?(vista==='panel'?'pagos':vista):'pagos');
+  const vistaActiva=!enLinea?'pagos':(esAdminGeneral?vista:(esResponsable?(vista==='panel'?'pagos':vista):'pagos'));
   const datos=dataSnapshot?.periodo===periodoId && dataSnapshot?.salon===salonId ? dataSnapshot.value : null;
   const reporteClave=`${periodoId}/${salonId}`;
   const reporteFondos=tieneAcceso && estadoReporteFondos?.clave===reporteClave && estadoReporteFondos?.uid===usuario?.uid ? estadoReporteFondos.informe : null;
@@ -146,15 +160,21 @@ export default function App() {
 
 
   useEffect(()=>{inicioEscuchaAvisos.current=Date.now();},[]);
+  useEffect(()=>{
+    const actualiza=()=>setEnLinea(navigator.onLine);
+    window.addEventListener('online',actualiza);
+    window.addEventListener('offline',actualiza);
+    return ()=>{window.removeEventListener('online',actualiza);window.removeEventListener('offline',actualiza);};
+  },[]);
 
   // Nuevos roles: un solo administrador general y dos plazas por salón.
   // Antes de publicar se deben configurar roles/adminGeneralUid y probar las reglas en el emulador.
   useEffect(()=>{
     const unsub=onAuthStateChanged(auth,u=>{
-      setUsuario(u);setUidAdminGeneral('');setAsignacion(null);setAsignacionLector(null);setSesionCodigo(null);setErrorAcceso('');setLoginError('');
+      setUsuario(u);setUidAdminGeneral('');setAsignacion(null);setAsignacionLector(null);setSesionCodigo(null);setVistaOffline(null);setErrorAcceso('');setLoginError('');
       // La sesión firmada por Firebase contiene exclusivamente salón, ciclo y
       // versión del código. Nunca se confía en un selector guardado en el navegador.
-      if(u){
+      if(u&&navigator.onLine){
         void u.getIdTokenResult().then(({claims})=>{
           if(auth.currentUser?.uid!==u.uid||claims.rolSalon!=='consulta')return;
           const {periodoCodigo,salonCodigo}=claims;
@@ -174,7 +194,7 @@ export default function App() {
     return ()=>unsub();
   },[]);
   useEffect(()=>{
-    if(!usuario)return;
+    if(!usuario||!enLinea)return;
     const stop1=onValue(ref(database,'roles/adminGeneralUid'),snap=>{
       const uid=snap.val()||'';
       setUidAdminGeneral(uid);
@@ -191,9 +211,9 @@ export default function App() {
       }
     },err=>setLoginError(`No se pudo leer tu grupo: ${avisoError(err)}`));
     return ()=>{stop1();stop2();};
-  },[usuario]);
+  },[usuario,enLinea]);
   useEffect(()=>{
-    if(!usuario)return;
+    if(!usuario||!enLinea)return;
     const stopRol=onValue(ref(database,`roles/lectores/${usuario.uid}`),snap=>{
       const rol=snap.val()||null;
       setAsignacionLector(rol);
@@ -206,9 +226,9 @@ export default function App() {
       }
     },err=>setErrorAcceso(`No se pudo consultar tu autorización: ${avisoError(err)}`));
     return ()=>stopRol();
-  },[usuario]);
+  },[usuario,enLinea]);
   useEffect(()=>{
-    if(!tieneAcceso)return;
+    if(!tieneAcceso||!enLinea)return;
     if(esAdminGeneral){
       const stop=onValue(ref(database,'periodos'),snap=>{
         setPeriodos(snap.val()||{});setDbError('');
@@ -224,25 +244,25 @@ export default function App() {
         salones:{[salonId]:snap.val()||{nombre:`Salón ${salonId}`}}}}));
     },err=>setDbError(avisoError(err)));
     return ()=>{stopMeta();stopSalon();};
-  },[tieneAcceso,esAdminGeneral,periodoId,salonId]);
+  },[tieneAcceso,esAdminGeneral,periodoId,salonId,enLinea]);
   useEffect(()=>{
-    if(!tieneAcceso)return;
-    const stop=onValue(ref(database,`aulas/${periodoId}/${salonId}`),snap=>{setDataSnapshot({periodo:periodoId,salon:salonId,value:snap.val()});setCargando(false);setDbError('');},err=>{setCargando(false);setDbError(avisoError(err));});
+    if(!tieneAcceso||!enLinea)return;
+    const stop=onValue(ref(database,`aulas/${periodoId}/${salonId}`),snap=>{setDataSnapshot({periodo:periodoId,salon:salonId,value:snap.val(),source:'servidor'});setCargando(false);setDbError('');},err=>{setCargando(false);setDbError(avisoError(err));});
     return ()=>stop();
-  },[tieneAcceso,periodoId,salonId]);
+  },[tieneAcceso,periodoId,salonId,enLinea]);
   useEffect(()=>{
-    if(!esAdminGeneral)return;
+    if(!esAdminGeneral||!enLinea)return;
     const stop1=onValue(ref(database,'roles/responsables'),snap=>setResponsables(snap.val()||{}),err=>setDbError(avisoError(err)));
     return ()=>stop1();
-  },[esAdminGeneral]);
+  },[esAdminGeneral,enLinea]);
   useEffect(()=>{
-    if(!esAdminGeneral || vista!=='profesores')return;
+    if(!esAdminGeneral || !enLinea || vista!=='profesores')return;
     const stop=onValue(ref(database,'profesoresAhorro'),snap=>{setPagosProfesores(snap.val()||{});setErrorProfesores('');},
       err=>setErrorProfesores(`No se pudo consultar el ahorro de profesores: ${avisoError(err)}`));
     return ()=>stop();
-  },[esAdminGeneral,vista,periodoId]);
+  },[esAdminGeneral,vista,periodoId,enLinea]);
   useEffect(()=>{
-    if(!esAdminGeneral||!usuario||vista!=='roles')return;
+    if(!enLinea||!esAdminGeneral||!usuario||vista!=='roles')return;
     let cancelado=false;
     const cargar=async()=>{
       try{
@@ -255,7 +275,7 @@ export default function App() {
     };
     void cargar();
     return ()=>{cancelado=true;};
-  },[esAdminGeneral,usuario,vista,periodoId,responsables]);
+  },[esAdminGeneral,usuario,vista,periodoId,responsables,enLinea]);
   useEffect(()=>{
     const tick=()=>{ const now=Date.now(); setFecha(prev=>fechaMexico(prev)===fechaMexico(now)?prev:now); };
     const timer=setInterval(tick,1000);
