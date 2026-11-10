@@ -365,7 +365,10 @@ export default function App() {
       return 'sin-dato';
     const pagosActuales=datos?.[rutaPagoSeleccionado(periodos,periodoId,semanaActual)]||{};
     if(historica&&esPagoLegado(datos?.pagos||{},e.id,semanaActual))return 'pagado';
-    return estadoSemana(pagosActuales,e.id,semanaActual);
+    const remoto=estadoSemana(pagosActuales,e.id,semanaActual);
+    const cambio=pendientesOffline.find(m=>m.uid===usuario?.uid&&m.periodo===periodoId
+      &&m.salon===salonId&&m.estudianteId===e.id&&m.semana===semanaActual);
+    return cambio&&!enLinea?(cambio.deseado==='pagado'?'pagado':'pendiente'):remoto;
   };
   const ahorroNuevoActivo=corteActivo(periodos);
   const esCorteEnSalon=esPeriodoReinicio(periodos,periodoId);
@@ -420,10 +423,108 @@ export default function App() {
   const semanaInicio=inicioAportaciones(periodos,periodoId,datos?.meta);
   const vigenteParaRegistrar=semana<=semanaActual && (esAnterior || semana>=semanaInicio)
     && (periodoId!=='2026-2027-A'||ahorroNuevoActivo);
+  const pendienteDe=e=>pendientesOffline.find(m=>m.uid===usuario?.uid
+    &&m.periodo===periodoId&&m.salon===salonId
+    &&m.estudianteId===e.id&&m.semana===semana);
+  const movimientosActuales=pendientesOffline.filter(m=>m.uid===usuario?.uid
+    &&m.periodo===periodoId&&m.salon===salonId);
+  const encolarMovimiento=async(e,deseado)=>{
+    if(!usuario||!esAdmin||!datos?.meta)throw Error('Se necesita una sesión previa y datos del salón para capturar offline.');
+    if(vacacionesActivas||periodo?.meta?.cerradoEn||!vigenteParaRegistrar)
+      throw Error('Esta semana no admite aportaciones.');
+    if(esAnterior&&esPagoLegado(pagosLegado,e.id,semana))
+      throw Error('El pago anterior ya existe y no se puede modificar.');
+    const clave=claveMovimiento(usuario.uid,periodoId,salonId,e.id,semana);
+    const listaLocal=await leerPendientesOffline(usuario.uid);
+    const anterior=listaLocal.find(m=>m.clave===clave);
+    const original=pagosSemana[pagoClave(e.id,semana)]||null;
+    const baseEstado=original?.estado||'pendiente';
+    const estadoOriginal=baseEstado==='pagado'?'pagado':'pendiente';
+    const estadoDeseado=deseado==='pagado'?'pagado':'pendiente';
+    if(estadoOriginal===estadoDeseado){
+      if(anterior)await eliminarPendienteOffline(clave);
+      setPendientesOffline(listaLocal.filter(m=>m.clave!==clave));
+      return;
+    }
+    const nuevo=anterior
+      ?cambiarDeseado(anterior,deseado,baseEstado)
+      :crearCambioPendiente({
+        uid:usuario.uid,periodo:periodoId,salon:salonId,estudianteId:e.id,semana,
+        nombre:e.nombreVisible||e.nombre,
+        base:{estado:baseEstado,version:versionPago(original)},deseado,
+        id:crypto.randomUUID(),creadoEn:Date.now()
+      });
+    if(!nuevo){
+      await eliminarPendienteOffline(clave);
+      setPendientesOffline(listaLocal.filter(m=>m.clave!==clave));
+      return;
+    }
+    await guardarPendienteOffline(nuevo);
+    setPendientesOffline([...listaLocal.filter(m=>m.clave!==clave),nuevo]);
+  };
+  useEffect(()=>{
+    if(!enLinea||!esAdmin||!usuario||dataSnapshot?.source!=='servidor'
+       ||sincronizandoRef.current)return;
+    const listos=pendientesOffline.filter(m=>m.uid===usuario.uid
+      &&m.estado!=='conflicto'
+      &&(esAdminGeneral||(m.periodo===periodoId&&m.salon===salonId)));
+    if(!listos.length)return;
+    let cancelado=false;
+    sincronizandoRef.current=true;
+    const procesar=async()=>{
+      setSincronizandoOffline(true);
+      try{
+        for(const m of listos){
+          if(cancelado||auth.currentUser?.uid!==m.uid)break;
+          try{
+            const token=await usuario.getIdToken();
+            const respuesta=await fetch('/api/resolver-retiro',{
+              method:'POST',cache:'no-store',
+              headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+              body:JSON.stringify({operacion:'pagoOffline',
+                periodo:m.periodo,salon:m.salon,estudianteId:m.estudianteId,
+                semana:m.semana,deseado:m.deseado,baseVersion:m.baseVersion,id:m.id})
+            });
+            const body=await respuesta.json().catch(()=>({}));
+            if(respuesta.ok&&body.ok){
+              await eliminarPendienteOffline(m.clave);
+              if(!cancelado)setPendientesOffline(actual=>actual.filter(p=>p.clave!==m.clave));
+            }else if(respuesta.status===409&&body.conflicto){
+              const conError={...m,estado:'conflicto',mensaje:body.error||'El pago cambió en otro dispositivo.'};
+              await guardarPendienteOffline(conError);
+              if(!cancelado)setPendientesOffline(actual=>actual.map(p=>p.clave===m.clave?conError:p));
+            }else{
+              // Sin red, token caducado o error del servidor: conservar
+              // íntegro el movimiento para un futuro reintento.
+              break;
+            }
+          }catch{break;}
+        }
+      }finally{
+        sincronizandoRef.current=false;
+        if(!cancelado)setSincronizandoOffline(false);
+      }
+    };
+    void procesar();
+    return ()=>{cancelado=true;};
+  },[enLinea,esAdmin,esAdminGeneral,usuario,dataSnapshot,pendientesOffline,
+      periodoId,salonId,reintentarOffline]);
+
+  const descartarMovimiento=async mov=>{
+    if(!window.confirm(`¿Descartar la captura local de ${mov.nombre||'este alumno'}? Esto NO cambia el pago en Firebase; solo elimina el intento pendiente de este celular.`))return;
+    try{
+      await eliminarPendienteOffline(mov.clave);
+      setPendientesOffline(actual=>actual.filter(m=>m.clave!==mov.clave));
+    }catch(error){setToast(`No se pudo quitar la captura local: ${error.message}`);}
+  };
   const estadoAlumno=e=>{
     if(!vigenteParaRegistrar)return 'sin-dato';
     if(esAnterior && esPagoLegado(pagosLegado,e.id,semana))return 'pagado';
-    return estadoSemana(pagosSemana,e.id,semana);
+    const remoto=estadoSemana(pagosSemana,e.id,semana);
+    const pendiente=pendienteDe(e);
+    return pendiente&&!enLinea
+      ?(pendiente.deseado==='pagado'?'pagado':'pendiente')
+      :remoto;
   };
   const detalleSemana=lista.map(e=>({...e,estado:estadoAlumno(e)}));
   const pagaron=detalleSemana.filter(e=>estadoAlumno(e)==='pagado').length;
