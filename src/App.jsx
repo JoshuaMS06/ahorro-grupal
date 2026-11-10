@@ -153,7 +153,9 @@ export default function App() {
   const esInvitadoCodigo=Boolean(usuario && ((sesionCodigo?.periodo===periodoId && sesionCodigo?.salon===salonId)
     ||(vistaLocalAutorizada&&vistaOffline.rol==='alumno')));
   const tieneAcceso=esAdmin || esLector || esInvitadoCodigo;
-  const vistaActiva=!enLinea?'pagos':(esAdminGeneral?vista:(esResponsable?(vista==='panel'?'pagos':vista):'pagos'));
+  const vistaActiva=!enLinea
+    ?(esAdminGeneral&&vista==='panel'?'panel':'pagos')
+    :(esAdminGeneral?vista:(esResponsable?(vista==='panel'?'pagos':vista):'pagos'));
   const datos=dataSnapshot?.periodo===periodoId && dataSnapshot?.salon===salonId ? dataSnapshot.value : null;
   const reporteClave=`${periodoId}/${salonId}`;
   const reporteFondos=tieneAcceso && estadoReporteFondos?.clave===reporteClave && estadoReporteFondos?.uid===usuario?.uid ? estadoReporteFondos.informe : null;
@@ -884,7 +886,7 @@ export default function App() {
   };
   const ingresarExtraGeneral=async e=>{
     e.preventDefault();
-    if(!esAdminGeneral||periodo?.meta?.cerradoEn||!ahorroNuevoActivo)return;
+    if(!enLinea||!esAdminGeneral||periodo?.meta?.cerradoEn||!ahorroNuevoActivo)return;
     const monto=Number(montoExtra);
     if(!Number.isSafeInteger(monto)||monto<1||monto>1000000){
       setToast('Introduce un importe entero positivo, máximo $1,000,000.');return;
@@ -1130,11 +1132,11 @@ export default function App() {
       {mostrarMenu&&(!tieneAcceso||esAdmin)&&<nav className="ag-menu">
           {esAdminGeneral&&<button onClick={()=>{setVista('panel');setMostrarMenu(false);}}>Panel general</button>}
           {tieneAcceso&&<button onClick={()=>{setVista('pagos');setMostrarMenu(false);}}>Aportaciones</button>}
-          {esAdmin&&<button onClick={()=>{setVista('consulta');setMostrarMenu(false);}}>Consultar otros salones</button>}
-          {esAdmin&&<button onClick={()=>{setVista('profesores');setMostrarMenu(false);}}>Profesores</button>}
-          {esAdmin&&<button onClick={()=>{setVista('gestion');setMostrarMenu(false);}}>Ciclos y grupos</button>}
-          {esAdminGeneral&&<button onClick={()=>{setVista('roles');setMostrarMenu(false);}}>Responsables de salón</button>}
-          {esAdminGeneral&&<button onClick={()=>{setVista('lectores');setMostrarMenu(false);}}>Códigos de acceso</button>}
+          {enLinea&&esAdmin&&<button onClick={()=>{setVista('consulta');setMostrarMenu(false);}}>Consultar otros salones</button>}
+          {enLinea&&esAdmin&&<button onClick={()=>{setVista('profesores');setMostrarMenu(false);}}>Profesores</button>}
+          {enLinea&&esAdmin&&<button onClick={()=>{setVista('gestion');setMostrarMenu(false);}}>Ciclos y grupos</button>}
+          {enLinea&&esAdminGeneral&&<button onClick={()=>{setVista('roles');setMostrarMenu(false);}}>Responsables de salón</button>}
+          {enLinea&&esAdminGeneral&&<button onClick={()=>{setVista('lectores');setMostrarMenu(false);}}>Códigos de acceso</button>}
           <button onClick={()=>{instalar();setMostrarMenu(false);}}>Instalar app</button>
         </nav>}
       {!tieneAcceso ? <AccesoSalon abrirLogin={()=>setLoginOpen(true)} ingresarConCodigo={ingresarConCodigo}
@@ -1152,14 +1154,14 @@ export default function App() {
         <div className="ag-intro ag-intro-compact"><div><span className="ag-kicker">{esAdminGeneral?'ADMINISTRACIÓN GENERAL':esResponsable?`RESPONSABLE · SALÓN ${salonId}`:`SALÓN ${salonId}`} {periodo?.meta?.cerradoEn?' · CICLO ARCHIVADO':''}</span><h1>{esAdminGeneral?'Panel general':esAdmin?'Registro de pagos':'Mi ahorro grupal'}</h1></div><div className="ag-week-pill ag-week-monthly"><CalendarClock size={18}/><span><strong>{semanaActualEtiqueta}</strong></span></div></div>
         {vacacionesActivas&&<div className="ag-note"><PauseCircle size={17}/> Vacaciones activas: {semanaActualEtiqueta} congelada. No se registran aportaciones ni nuevas semanas pendientes.</div>}
         {esAdminGeneral&&<div className="ag-selectors">
-          <label>Ciclo escolar<select value={periodoId} onChange={e=>cambiarPeriodo(e.target.value)}>{periodKeys.length ? periodKeys.map(k=><option key={k} value={k}>{periodos[k]?.meta?.nombre||k}</option>):<option value={defaultPeriod}>Sin listas importadas</option>}</select></label>
-          <label>Salón<select value={salonId} onChange={e=>cambiarSalon(e.target.value)}>{salones.length ? salones.map(k=><option key={k} value={k}>{periodo?.salones?.[k]?.nombre||`Salón ${k}`}</option>):<option value="507">Sin salones</option>}</select></label>
+          <label>Ciclo escolar<select disabled={!enLinea} value={periodoId} onChange={e=>cambiarPeriodo(e.target.value)}>{periodKeys.length ? periodKeys.map(k=><option key={k} value={k}>{periodos[k]?.meta?.nombre||k}</option>):<option value={defaultPeriod}>Sin listas importadas</option>}</select></label>
+          <label>Salón<select disabled={!enLinea} value={salonId} onChange={e=>cambiarSalon(e.target.value)}>{salones.length ? salones.map(k=><option key={k} value={k}>{periodo?.salones?.[k]?.nombre||`Salón ${k}`}</option>):<option value="507">Sin salones</option>}</select></label>
         </div>}
 
         {esAdmin&&<div className="ag-tabs" aria-label="Apartados principales">
           {esAdminGeneral&&<button className={vistaActiva==='panel'?'active':''} onClick={()=>setVista('panel')}><LayoutDashboard size={17}/> Inicio</button>}
           <button className={vistaActiva==='pagos'?'active':''} onClick={()=>setVista('pagos')}><Wallet size={17}/> Registrar pagos</button>
-          <button className={vistaActiva==='consulta'?'active':''} onClick={()=>setVista('consulta')}><UsersRound size={17}/> Consultar salones</button>
+          {enLinea&&<button className={vistaActiva==='consulta'?'active':''} onClick={()=>setVista('consulta')}><UsersRound size={17}/> Consultar salones</button>}
 
         </div>}
         {vistaActiva==='panel'&&esAdminGeneral&&<>
@@ -1180,7 +1182,7 @@ export default function App() {
                 <input type="number" min="1" max="1000000" step="1" value={montoExtra}
                   onChange={e=>setMontoExtra(e.target.value)} placeholder="Ej. 150" required/>
               </label>
-              <SmallButton type="submit" variant="primary" disabled={!!operacion||!ahorroNuevoActivo||!!periodo?.meta?.cerradoEn}>
+              <SmallButton type="submit" variant="primary" disabled={!enLinea||!!operacion||!ahorroNuevoActivo||!!periodo?.meta?.cerradoEn}>
                 <Plus size={17}/> Agregar al fondo general
               </SmallButton>
             </form>
@@ -1196,8 +1198,8 @@ export default function App() {
           <Panel title="¿Qué necesitas hacer?" icon={LayoutDashboard}>
             <div className="ag-general-actions">
               <button onClick={()=>setVista('pagos')}><Wallet size={25}/><strong>Registrar aportaciones</strong><span>Elegir salón y revisar pagos semanales</span></button>
-              <button onClick={()=>setVista('roles')}><UserCog size={25}/><strong>Administrar responsables</strong><span>Consultar y administrar las dos plazas por salón</span></button>
-              <button onClick={()=>setVista('gestion')}><FileSpreadsheet size={25}/><strong>Estudiantes y semestres</strong><span>Importar listas y gestionar ciclos</span></button>
+              <button disabled={!enLinea} onClick={()=>setVista('roles')}><UserCog size={25}/><strong>Administrar responsables</strong><span>Consultar y administrar las dos plazas por salón</span></button>
+              <button disabled={!enLinea} onClick={()=>setVista('gestion')}><FileSpreadsheet size={25}/><strong>Estudiantes y semestres</strong><span>Importar listas y gestionar ciclos</span></button>
 
             </div>
           </Panel>
