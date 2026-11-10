@@ -20,7 +20,7 @@ import { informeVisibleSegunRol } from '../lib/informeRoles.js';
 import {listarAvisosCarrera} from '../lib/avisosCarrera.js';
 import {claveRegistroPersonal,leerRegistrosFijados,fijarRegistroPersonal} from '../lib/registroPersonal.js';
 import {guardarVistaOffline,leerVistaOffline,leerPendientesOffline,guardarPendienteOffline,eliminarPendienteOffline,claveMovimiento} from '../lib/offlineStore.js';
-import {crearCambioPendiente,versionPago,cambiarDeseado} from '../lib/offlinePayments.js';
+import {crearMovimientoConIdentidad,versionPago,cambiarDeseado} from '../lib/offlinePayments.js';
 import MiRegistro from './MiRegistro.jsx';
 import { periodoSiguiente, salonSiguiente } from '../lib/semestres.js';
 import { prepararExcel, revisarCoincidencias } from '../lib/importarExcel.js';
@@ -342,7 +342,7 @@ export default function App() {
   },[usuario,enLinea,periodoId,salonId]);
 
   useEffect(()=>{
-    if(!usuario){setPendientesOffline([]);return;}
+    if(!usuario)return;
     let vigente=true;
     void leerPendientesOffline(usuario.uid).then(lista=>{if(vigente)setPendientesOffline(lista);})
       .catch(error=>console.warn('No se pudo consultar la cola offline:',error?.message||'error'));
@@ -476,11 +476,10 @@ export default function App() {
     }
     const nuevo=anterior
       ?cambiarDeseado(anterior,deseado,baseEstado)
-      :crearCambioPendiente({
+      :crearMovimientoConIdentidad({
         uid:usuario.uid,periodo:periodoId,salon:salonId,estudianteId:e.id,semana,
         nombre:e.nombreVisible||e.nombre,
-        base:{estado:baseEstado,version:versionPago(original)},deseado,
-        id:crypto.randomUUID(),creadoEn:Date.now()
+        base:{estado:baseEstado,version:versionPago(original)},deseado
       });
     if(!nuevo){
       await eliminarPendienteOffline(clave);
