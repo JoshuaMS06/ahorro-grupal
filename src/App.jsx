@@ -1112,6 +1112,9 @@ export default function App() {
           {vistaOffline?.actualizadoEn&&` Último respaldo: ${fechaLarga(vistaOffline.actualizadoEn)}.`}</span></div>
         </div>}
         {enLinea&&sincronizandoOffline&&<div className="ag-sync-banner" role="status"><RefreshCcw size={19}/> Sincronizando pagos pendientes…</div>}
+        {enLinea&&copiaOfflineLista&&<div className="ag-cache-ready" role="status">
+          <CheckCircle2 size={16}/> Este dispositivo ya tiene una copia para entrar sin internet.
+        </div>}
         {dbError&&<div className="ag-error"><AlertTriangle size={18}/> {dbError}</div>}
         <div className="ag-intro ag-intro-compact"><div><span className="ag-kicker">{esAdminGeneral?'ADMINISTRACIÓN GENERAL':esResponsable?`RESPONSABLE · SALÓN ${salonId}`:`SALÓN ${salonId}`} {periodo?.meta?.cerradoEn?' · CICLO ARCHIVADO':''}</span><h1>{esAdminGeneral?'Panel general':esAdmin?'Registro de pagos':'Mi ahorro grupal'}</h1></div><div className="ag-week-pill ag-week-monthly"><CalendarClock size={18}/><span><strong>{semanaActualEtiqueta}</strong></span></div></div>
         {vacacionesActivas&&<div className="ag-note"><PauseCircle size={17}/> Vacaciones activas: {semanaActualEtiqueta} congelada. No se registran aportaciones ni nuevas semanas pendientes.</div>}
