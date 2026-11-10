@@ -164,3 +164,34 @@
  .ag-week-monthly strong{font-size:14px}
  .ag-week-select>select{min-width:150px;max-width:230px;width:min(56vw,230px)}
 }
+
+/* PWA fuera de línea: movimientos todavía NO confirmados por Firebase. */
+.ag-offline-banner,.ag-sync-banner{display:flex;align-items:flex-start;gap:12px;padding:15px 16px;
+ border:1px solid #b989d7;border-radius:15px;background:#342346;color:#f5eafe;margin:8px 0 14px}
+.ag-offline-banner svg,.ag-sync-banner svg{flex:none;color:#efc4ff}
+.ag-offline-banner>div{display:flex;flex-direction:column;gap:5px}
+.ag-offline-banner strong{font-size:15px}
+.ag-offline-banner span{font-size:12px;line-height:1.5;color:#dac8e7}
+.ag-offline-banner p{margin:5px 0 0;line-height:1.55;font-size:13px}
+.ag-sync-banner{border-color:#527f75;background:#1e3d39;color:#d2f7eb;font-size:13px}
+.ag-sync-banner svg{color:#b7f7dd}
+.ag-offline-queue{border:1px solid #aa7bd7;border-radius:18px;background:#281a39;
+ padding:14px 15px;display:flex;flex-direction:column;gap:12px;margin:0 0 17px}
+.ag-offline-queue-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.ag-offline-queue-head>svg{color:#e4c5f9}
+.ag-offline-queue-head>strong{flex:1;min-width:160px;font-size:13px;color:#f6eaff}
+.ag-offline-queue-row{border-top:1px solid #574068;padding:11px 1px 0;display:flex;gap:10px;align-items:center;justify-content:space-between}
+.ag-offline-queue-row>div{min-width:0;display:flex;flex-direction:column;gap:5px}
+.ag-offline-queue-row strong{font-size:14px;color:#fff}
+.ag-offline-queue-row small{font-size:12px;color:#d9c7e8;line-height:1.4}
+.ag-offline-queue-row .ag-sync-conflict{color:#ffd0a8;font-weight:700}
+.ag-offline-queue-row .ag-sync-pending{color:#f0dbad}
+.ag-local-indicator{padding:4px 7px;background:#554061;border-radius:8px;
+ color:#f8deb0;font-size:10px;font-weight:750;white-space:nowrap}
+@media(max-width:500px){
+ .ag-offline-banner{padding:13px 11px}
+ .ag-offline-queue{padding:12px}
+ .ag-offline-queue-row{flex-wrap:wrap}
+ .ag-local-indicator{font-size:9px;padding:3px 5px}
+ .ag-student:has(.ag-local-indicator){flex-wrap:wrap}
+}
