@@ -161,10 +161,37 @@ export default function App() {
 
   useEffect(()=>{inicioEscuchaAvisos.current=Date.now();},[]);
   useEffect(()=>{
-    const actualiza=()=>setEnLinea(navigator.onLine);
-    window.addEventListener('online',actualiza);
-    window.addEventListener('offline',actualiza);
-    return ()=>{window.removeEventListener('online',actualiza);window.removeEventListener('offline',actualiza);};
+    let vivo=true,controlador=null;
+    const probar=async()=>{
+      if(!navigator.onLine){if(vivo)setEnLinea(false);return;}
+      controlador?.abort();
+      const intento=new AbortController();
+      controlador=intento;
+      const limite=setTimeout(()=>intento.abort(),4500);
+      try{
+        // Solicitud real sin caché: navigator.onLine puede indicar conexión
+        // aun cuando la red universitaria no tiene acceso a internet.
+        const r=await fetch(`/api/salones-disponibles?conexion=${Date.now()}`,{
+          cache:'no-store',signal:intento.signal
+        });
+        if(!r.ok)throw Error('Red inalcanzable');
+        if(vivo)setEnLinea(true);
+      }catch{if(vivo)setEnLinea(false);}
+      finally{clearTimeout(limite);}
+    };
+    const desconectar=()=>{controlador?.abort();if(vivo)setEnLinea(false);};
+    const visible=()=>{if(!document.hidden)void probar();};
+    window.addEventListener('online',probar);
+    window.addEventListener('offline',desconectar);
+    document.addEventListener('visibilitychange',visible);
+    const intervalo=setInterval(()=>void probar(),45000);
+    void probar();
+    return ()=>{
+      vivo=false;controlador?.abort();clearInterval(intervalo);
+      window.removeEventListener('online',probar);
+      window.removeEventListener('offline',desconectar);
+      document.removeEventListener('visibilitychange',visible);
+    };
   },[]);
 
   // Nuevos roles: un solo administrador general y dos plazas por salón.
@@ -346,7 +373,8 @@ export default function App() {
   const destinoSiguiente=(()=>{try{return periodoSiguiente(periodoId);}catch{return '';}})();
   const salones=Object.keys(periodo?.salones||{}).filter(id=>esAdminGeneral || (asignacion?.periodo===periodoId && asignacion?.salon===id) || (asignacionLector?.periodo===periodoId && asignacionLector?.salon===id) || (sesionCodigo?.periodo===periodoId && sesionCodigo?.salon===id)).sort((a,b)=>a.localeCompare(b,'es',{numeric:true}));
   const vacacionesActivas=periodo?.meta?.vacaciones?.activas===true;
-  const semanaActual=semanaPeriodo(periodo?.meta,fecha);
+  const semanaActual=semanaPeriodo(periodo?.meta,
+    !enLinea&&vistaOffline?.actualizadoEn?vistaOffline.actualizadoEn:fecha);
   const semanaActualEtiqueta=etiquetaSemana(periodoId,semanaActual,periodo?.meta);
   const semanaMinima=Math.max(primeraSemanaVisible(periodos,periodoId,periodo?.meta,datos?.meta),primeraSemanaCalendarioVisible(periodoId,periodo?.meta));
   const semana=Math.max(semanaMinima,Math.min(semanaElegida||semanaActual,semanaActual));
@@ -389,7 +417,7 @@ export default function App() {
     ||!avisosGlobales.some(a=>a.id===`${salonId}_${r.id}`)
   ),[mensajesRetiro,avisosGlobales,salonId]);
   useEffect(()=>{
-    if(!tieneAcceso||!usuario)return;
+    if(!tieneAcceso||!usuario||!enLinea)return;
     let ignorar=false;
     const actualizar=async()=>{
       try{
@@ -419,7 +447,7 @@ export default function App() {
     };
     actualizar();
     return ()=>{ignorar=true;};
-  },[tieneAcceso,esAdminGeneral,esResponsable,usuario,periodoId,salonId,datos,reporteClave,periodos,generacionId,ahorroNuevoActivo]);
+  },[tieneAcceso,esAdminGeneral,esResponsable,usuario,periodoId,salonId,datos,reporteClave,periodos,generacionId,ahorroNuevoActivo,enLinea]);
   const semanaInicio=inicioAportaciones(periodos,periodoId,datos?.meta);
   const vigenteParaRegistrar=semana<=semanaActual && (esAnterior || semana>=semanaInicio)
     && (periodoId!=='2026-2027-A'||ahorroNuevoActivo);
