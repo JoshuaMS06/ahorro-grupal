@@ -223,6 +223,26 @@ export default function App() {
   },[]);
   useEffect(()=>{
     if(!usuario||!enLinea)return;
+    // Una sesión de alumno conservada offline debe recuperar sus claims
+    // al volver internet: onAuthStateChanged no necesariamente vuelve a correr.
+    let vigente=true;
+    void usuario.getIdTokenResult().then(({claims})=>{
+      if(!vigente||auth.currentUser?.uid!==usuario.uid||claims.rolSalon!=='consulta')return;
+      const {periodoCodigo,salonCodigo}=claims;
+      if(!isPeriodId(periodoCodigo)||!isClassCode(salonCodigo))return;
+      setSesionCodigo(actual=>actual?.periodo===periodoCodigo&&actual?.salon===salonCodigo
+        ?actual:{periodo:periodoCodigo,salon:salonCodigo});
+      setPeriodoId(actual=>actual===periodoCodigo?actual:periodoCodigo);
+      setSalonId(actual=>actual===salonCodigo?actual:salonCodigo);
+      localStorage.setItem('ag:periodo',periodoCodigo);
+      localStorage.setItem('ag:salon',salonCodigo);
+    }).catch(error=>{
+      if(vigente)console.warn('Autorización al reconectar:',error?.code||'error');
+    });
+    return ()=>{vigente=false;};
+  },[usuario,enLinea]);
+  useEffect(()=>{
+    if(!usuario||!enLinea)return;
     const stop1=onValue(ref(database,'roles/adminGeneralUid'),snap=>{
       const uid=snap.val()||'';
       setUidAdminGeneral(uid);
@@ -317,8 +337,16 @@ export default function App() {
       datos:dataSnapshot.value,
       reporte:rol==='alumno'?null:estadoReporteFondos?.clave===`${periodoId}/${salonId}`
         &&estadoReporteFondos?.uid===usuario.uid?estadoReporteFondos.informe:null
-    }).then(()=>setCopiaOfflineLista(true))
-      .catch(error=>{setCopiaOfflineLista(false);console.warn('No se pudo guardar consulta offline:',error?.message||'error');});
+    }).then(async()=>{
+      // La copia es útil para arrancar completamente sin Wi-Fi sólo cuando
+      // el Service Worker terminó de preparar HTML, JS, CSS e iconos.
+      if(import.meta.env.PROD&&'serviceWorker' in navigator)
+        await navigator.serviceWorker.ready;
+      setCopiaOfflineLista(true);
+    }).catch(error=>{
+      setCopiaOfflineLista(false);
+      console.warn('No se pudo preparar acceso offline:',error?.message||'error');
+    });
   },[enLinea,usuario,tieneAcceso,periodoId,salonId,dataSnapshot,periodos,
     esAdminGeneral,esResponsable,estadoReporteFondos]);
 
