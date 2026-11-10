@@ -560,6 +560,8 @@ export default function App() {
   useEffect(()=>{primerEvento.current=null;},[periodoId]);
 
   const withOperation=async(label,fn)=>{
+    // El indicador offline distingue la captura local de la confirmación.
+
     if(operacion)return;
     setOperacion(label);
     try {const result=await fn();if(typeof result==='string')setToast(result);}
@@ -713,6 +715,10 @@ export default function App() {
   };
   const registrarPago=async e=>{
     if(!esAdmin||!vigenteParaRegistrar||vacacionesActivas||periodo?.meta?.cerradoEn)return;
+    if(!enLinea){
+      await withOperation(`guardar-local:${e.id}`,async()=>{await encolarMovimiento(e,'pagado');});
+      return;
+    }
     const key=pagoClave(e.id,semana);
     if(pagosSemana[key]?.estado==='pagado' || (esAnterior && esPagoLegado(pagosLegado,e.id,semana)))return;
     if(pagosSemana[key]?.estado==='anulado'){
@@ -748,6 +754,10 @@ export default function App() {
   };
   const anularPago=async e=>{
     if(!esAdmin||!vigenteParaRegistrar||vacacionesActivas||periodo?.meta?.cerradoEn)return;
+    if(!enLinea){
+      await withOperation(`anular-local:${e.id}`,async()=>{await encolarMovimiento(e,'anulado');});
+      return;
+    }
     // Un toque, sin solicitar motivo. Cada alternancia se registra en
     // historial con usuario y fecha, sin borrar el registro original.
     await withOperation(`anular:${e.id}`,async()=>{
