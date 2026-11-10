@@ -9,7 +9,7 @@ import {
   AlertTriangle, GraduationCap, ArrowDownRight, Eye, EyeOff, LayoutDashboard, UserCog, FileSpreadsheet, PauseCircle, PlayCircle,
 } from 'lucide-react';
 import { cuotaDeSalon, esLunes, estadoSemana, fechaMexico, isClassCode, isPeriodId, pagoClave, semanaPeriodo } from '../lib/aulas.js';
-import {etiquetaSemana,rangoFechasSemana,opcionSemana} from '../lib/semanaPresentacion.js';
+import {etiquetaSemana,opcionSemana,primeraSemanaCalendarioVisible} from '../lib/semanaPresentacion.js';
 import {corteActivo, esPeriodoReinicio, rutaPagos, rutaRetiros, inicioAportaciones, resumirAhorroReiniciado} from '../lib/reinicioContable.js';
 import {esSemanaAnterior, rutaPagoSeleccionado, primeraSemanaVisible, esPagoLegado, resumenPagosAnteriores} from '../lib/pagosAnteriores.js';
 import {PROFESORES, CUOTA_PROFESOR, claveSemanaProfesor, resumenAcumuladoProfesor, crearPagoProfesor, esPagoProfesorAnterior} from '../lib/profesoresAhorro.js';
@@ -282,11 +282,10 @@ export default function App() {
   const vacacionesActivas=periodo?.meta?.vacaciones?.activas===true;
   const semanaActual=semanaPeriodo(periodo?.meta,fecha);
   const semanaActualEtiqueta=etiquetaSemana(periodoId,semanaActual,periodo?.meta);
-  const semanaActualRango=rangoFechasSemana(periodoId,semanaActual,periodo?.meta);
-  const semanaMinima=primeraSemanaVisible(periodos,periodoId,periodo?.meta,datos?.meta);
+  const semanaMinima=Math.max(primeraSemanaVisible(periodos,periodoId,periodo?.meta,datos?.meta),primeraSemanaCalendarioVisible(periodoId,periodo?.meta));
   const semana=Math.max(semanaMinima,Math.min(semanaElegida||semanaActual,semanaActual));
   const cuotaSemanal=cuotaDeSalon(salonId,datos?.meta);
-  const semanaProfesor=Math.max(1,Math.min(semanaProfesorElegida||semanaActual,semanaActual));
+  const semanaProfesor=Math.max(semanaMinima,Math.min(semanaProfesorElegida||semanaActual,semanaActual));
   const generacionId=generacionDeAula(periodoId,salonId,datos?.meta);
   const integrantes=useMemo(()=>datos?.integrantes||{},[datos]);
   const lista=useMemo(()=>Object.entries(integrantes).map(([id,v])=>({id,...v,nombreVisible:nombreParaMostrar(v.nombre,id,v.formatoNombre)})).sort((a,b)=> a.nombreVisible.localeCompare(b.nombreVisible,'es',{sensitivity:'base'}) || a.nombre.localeCompare(b.nombre,'es') || a.id.localeCompare(b.id)),[integrantes]);
@@ -881,7 +880,7 @@ export default function App() {
       {!tieneAcceso ? <AccesoSalon abrirLogin={()=>setLoginOpen(true)} ingresarConCodigo={ingresarConCodigo}
         ocupado={!!operacion} error={errorAcceso} modoDemo={usarEmuladores}/> : <main className="ag-main">
         {dbError&&<div className="ag-error"><AlertTriangle size={18}/> {dbError}</div>}
-        <div className="ag-intro ag-intro-compact"><div><span className="ag-kicker">{esAdminGeneral?'ADMINISTRACIÓN GENERAL':esResponsable?`RESPONSABLE · SALÓN ${salonId}`:`SALÓN ${salonId}`} {periodo?.meta?.cerradoEn?' · CICLO ARCHIVADO':''}</span><h1>{esAdminGeneral?'Panel general':esAdmin?'Registro de pagos':'Mi ahorro grupal'}</h1></div><div className="ag-week-pill ag-week-monthly"><CalendarClock size={18}/><span><strong>{semanaActualEtiqueta}</strong>{semanaActualRango&&<small>{semanaActualRango}</small>}</span></div></div>
+        <div className="ag-intro ag-intro-compact"><div><span className="ag-kicker">{esAdminGeneral?'ADMINISTRACIÓN GENERAL':esResponsable?`RESPONSABLE · SALÓN ${salonId}`:`SALÓN ${salonId}`} {periodo?.meta?.cerradoEn?' · CICLO ARCHIVADO':''}</span><h1>{esAdminGeneral?'Panel general':esAdmin?'Registro de pagos':'Mi ahorro grupal'}</h1></div><div className="ag-week-pill ag-week-monthly"><CalendarClock size={18}/><span><strong>{semanaActualEtiqueta}</strong></span></div></div>
         {vacacionesActivas&&<div className="ag-note"><PauseCircle size={17}/> Vacaciones activas: {semanaActualEtiqueta} congelada. No se registran aportaciones ni nuevas semanas pendientes.</div>}
         {esAdminGeneral&&<div className="ag-selectors">
           <label>Ciclo escolar<select value={periodoId} onChange={e=>cambiarPeriodo(e.target.value)}>{periodKeys.length ? periodKeys.map(k=><option key={k} value={k}>{periodos[k]?.meta?.nombre||k}</option>):<option value={defaultPeriod}>Sin listas importadas</option>}</select></label>
@@ -923,7 +922,7 @@ export default function App() {
           <section className="ag-general-metrics" aria-label="Resumen del ciclo">
             <div><UsersRound size={22}/><strong>{Object.keys(periodo?.salones||{}).length}</strong><span>Salones del ciclo</span></div>
             <div><UserCog size={22}/><strong>{Object.values(responsables?.[periodoId]||{}).reduce((n,p)=>n+Object.values(p||{}).filter(Boolean).length,0)}</strong><span>Responsables asignados</span></div>
-            <div className="ag-month-metric"><CalendarClock size={22}/><strong>{semanaActualEtiqueta}</strong><span>{semanaActualRango||'Semana actual'}</span></div>
+            <div className="ag-month-metric"><CalendarClock size={22}/><strong>{semanaActualEtiqueta}</strong><span>Semana actual</span></div>
           </section>
           <Panel title="¿Qué necesitas hacer?" icon={LayoutDashboard}>
             <div className="ag-general-actions">
@@ -935,11 +934,10 @@ export default function App() {
           </Panel>
         </>}
         {vistaActiva==='pagos'&&<>
-          {!esAdmin&&<MiRegistro salon={salonId} semana={semanaActualEtiqueta} fechas={semanaActualRango} lista={lista}
+          {!esAdmin&&<MiRegistro salon={salonId} semana={semanaActualEtiqueta} lista={lista}
             seleccionado={registroFijado} pagos={pagos} estado={estadoMiRegistro} guardar={guardarRegistroFijado}/>}
           {esAdmin&&<section className="ag-week-glance" aria-label="Avance semanal">
             <div className="ag-week-glance-heading"><span><CalendarClock size={18}/> {etiquetaSemana(periodoId,semana,periodo?.meta)}</span><strong>{cargando?'—':lista.length} estudiantes</strong></div>
-            <p className="ag-month-date-line">{rangoFechasSemana(periodoId,semana,periodo?.meta)}</p>
             <div className="ag-week-glance-numbers">
               <div><strong>{vigenteParaRegistrar?pagaron:'—'}</strong><span>Pagaron</span></div>
               <div><strong>{vigenteParaRegistrar?pendientes:'—'}</strong><span>Pendientes</span></div>
@@ -954,7 +952,7 @@ export default function App() {
           <details className={`ag-disclosure ag-roster-disclosure${esAdmin?' is-admin':''}`} open={esAdmin}>
             {!esAdmin&&<summary><span><UsersRound size={19}/> Compañeros del salón</span><span className="ag-disclosure-hint">Ver lista</span></summary>}
           {datos?.meta&&<Panel title={esAdmin?(esAnterior?'Pagos anteriores':'Registro semanal'):'Consulta semanal'} icon={CalendarClock} action={<div className="ag-week-select"><button type="button" onClick={()=>setSemanaElegida(Math.max(semanaMinima,semana-1))} disabled={semana<=semanaMinima}>‹</button><select value={semana} onChange={e=>setSemanaElegida(Number(e.target.value))}>{Array.from({length:Math.max(semanaActual-semanaMinima+1,1)},(_,i)=>i+semanaMinima).reverse().map(n=><option key={n} value={n}>{opcionSemana(periodoId,n,periodo?.meta)}</option>)}</select><button type="button" onClick={()=>setSemanaElegida(Math.min(semanaActual,semana+1))} disabled={semana>=semanaActual}>›</button>{semana!==semanaActual&&<button type="button" className="ag-week-current" title="Volver a la semana actual" onClick={()=>setSemanaElegida(0)}>Actual</button>}</div>}>
-            <div className="ag-week-dates"><CalendarClock size={15}/> <span>{etiquetaSemana(periodoId,semana,periodo?.meta)} · <strong>{rangoFechasSemana(periodoId,semana,periodo?.meta)}</strong></span></div>
+            <div className="ag-week-dates"><CalendarClock size={15}/> <span>{etiquetaSemana(periodoId,semana,periodo?.meta)}</span></div>
             {esAnterior&&<div className="ag-note"><History size={16}/> Los pagos de este periodo se mantienen separados del fondo actual y no generan deudas automáticas.</div>}
             <div className="ag-toolbar"><label className="ag-search"><Search size={17}/><input placeholder="Buscar por nombre o control..." value={search} onChange={e=>setSearch(e.target.value)}/></label><div className="ag-filters"><button className={filtro==='todos'?'active':''} onClick={()=>setFiltro('todos')}>Todos</button><button className={filtro==='pagado'?'active':''} onClick={()=>setFiltro('pagado')}>Pagaron</button><button className={filtro==='pendiente'?'active':''} onClick={()=>setFiltro('pendiente')}>{esAnterior?'Sin registrar':'Pendientes'}</button></div></div>
             {!vigenteParaRegistrar&&<div className="ag-note"><History size={16}/> Esta semana corresponde al historial anterior o a un periodo sin registros detallados. No se muestran supuestos adeudos.</div>}
@@ -1063,15 +1061,15 @@ export default function App() {
         </Panel>}
         {vistaActiva==='profesores'&&esAdminGeneral&&<Panel title="Ahorro individual de profesores" icon={GraduationCap}
           action={<div className="ag-week-select ag-week-select-docentes">
-            <button type="button" aria-label="Semana anterior" disabled={semanaProfesor<=1} onClick={()=>setSemanaProfesorElegida(Math.max(1,semanaProfesor-1))}>‹</button>
+            <button type="button" aria-label="Semana anterior" disabled={semanaProfesor<=semanaMinima} onClick={()=>setSemanaProfesorElegida(Math.max(semanaMinima,semanaProfesor-1))}>‹</button>
             <select aria-label="Semana de profesores" value={semanaProfesor} onChange={e=>setSemanaProfesorElegida(Number(e.target.value))}>
-              {Array.from({length:semanaActual},(_,i)=>i+1).reverse().map(n=><option key={n} value={n}>{opcionSemana(periodoId,n,periodo?.meta)}</option>)}
+              {Array.from({length:Math.max(0,semanaActual-semanaMinima+1)},(_,i)=>i+semanaMinima).reverse().map(n=><option key={n} value={n}>{opcionSemana(periodoId,n,periodo?.meta)}</option>)}
             </select>
             <button type="button" aria-label="Semana siguiente" disabled={semanaProfesor>=semanaActual} onClick={()=>setSemanaProfesorElegida(Math.min(semanaActual,semanaProfesor+1))}>›</button>
             {semanaProfesor!==semanaActual&&<button className="ag-week-current" type="button" onClick={()=>setSemanaProfesorElegida(0)}>Actual</button>}
           </div>}>
           <p className="ag-muted">Cada profesor aporta <strong>{pesos(CUOTA_PROFESOR)} por semana</strong> a su ahorro personal, separado del fondo de la carrera y del ahorro del salón 507.</p>
-          <p className="ag-week-dates"><CalendarClock size={15}/> {etiquetaSemana(periodoId,semanaProfesor,periodo?.meta)} · {rangoFechasSemana(periodoId,semanaProfesor,periodo?.meta)}</p>
+          <p className="ag-week-dates"><CalendarClock size={15}/> {etiquetaSemana(periodoId,semanaProfesor,periodo?.meta)}</p>
           {esPagoProfesorAnterior(periodoId,semanaProfesor)&&<div className="ag-note"><History size={16}/> Los registros previos al reinicio no se incorporan al ahorro nuevo de cada profesor.</div>}
           {errorProfesores&&<div className="ag-error"><AlertTriangle size={17}/>{errorProfesores}</div>}
           <div className="ag-prof-grid">

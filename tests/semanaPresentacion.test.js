@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {semanaPeriodo,pagoClave} from '../lib/aulas.js';
-import {etiquetaSemana,numeroSemanaVisible,rangoFechasSemana,fechasSemana,opcionSemana,textoConfirmacionRestaurarPago} from '../lib/semanaPresentacion.js';
+import {etiquetaSemana,numeroSemanaVisible,rangoFechasSemana,fechasSemana,opcionSemana,primeraSemanaCalendarioVisible,textoConfirmacionRestaurarPago} from '../lib/semanaPresentacion.js';
 import {semanaActualMexico,proximoLunesMexico} from '../lib/semanaAutomatica.js';
 const periodo='2026-2027-A';
 const meta={lunesBase:'2026-10-19',semanaBase:4};
@@ -23,7 +23,7 @@ test('noviembre reinicia en Semana 1 y progresa el siguiente lunes',()=>{
  assert.equal(etiquetaSemana(periodo,internaNov,meta),'Semana 1 de noviembre');
  assert.equal(numeroSemanaVisible(periodo,internaNov,meta),1);
  assert.equal(rangoFechasSemana(periodo,internaNov,meta),'02/11/2026 – 08/11/2026');
- assert.equal(opcionSemana(periodo,internaNov,meta),'Sem. 1 nov · 02-08 nov');
+ assert.equal(opcionSemana(periodo,internaNov,meta),'Semana 1 de noviembre');
  assert.equal(semanaActualMexico(fecha('2026-11-02')),1);
  assert.equal(etiquetaSemana(periodo,7,meta),'Semana 2 de noviembre');
  assert.equal(semanaActualMexico(fecha('2026-11-09')),2);
@@ -65,4 +65,27 @@ test('una fecha visible NO altera la llave ni el importe de un pago existente',(
  assert.match(aviso,/Alumno de prueba \(Semana 1 de noviembre\)/);
  assert.doesNotMatch(aviso,/Histórica|Semana 6/);
  assert.match(aviso,/historial/);
+});
+
+test('selector comienza exclusivamente en octubre, sin septiembre ni fechas cortas',()=>{
+ const inicial=primeraSemanaCalendarioVisible(periodo,meta);
+ assert.equal(inicial,2);
+ const opciones=Array.from({length:7-inicial+1},(_,i)=>i+inicial).reverse()
+   .map(semana=>opcionSemana(periodo,semana,meta));
+ assert.deepEqual(opciones,[
+   'Semana 2 de noviembre','Semana 1 de noviembre',
+   'Semana 4 de octubre','Semana 3 de octubre','Semana 2 de octubre','Semana 1 de octubre'
+ ]);
+ assert.equal(opciones.every(x=>!(/septiembre|\d{2}-\d{2}|\d{2}\/\d{2}/i).test(x)),true);
+ assert.equal(primeraSemanaCalendarioVisible('2026-2027-B',meta),1);
+});
+
+test('lunes a viernes permanece la misma semana y no cambia hasta el lunes siguiente',()=>{
+ for(const d of ['2026-11-09','2026-11-10','2026-11-11','2026-11-12','2026-11-13',
+                 '2026-11-14','2026-11-15']){
+   assert.equal(semanaActualMexico(fecha(d)),2,d);
+   assert.equal(opcionSemana(periodo,semanaPeriodo(meta,fecha(d)),meta),'Semana 2 de noviembre',d);
+ }
+ assert.equal(semanaActualMexico(fecha('2026-11-16')),3);
+ assert.equal(opcionSemana(periodo,semanaPeriodo(meta,fecha('2026-11-16')),meta),'Semana 3 de noviembre');
 });
