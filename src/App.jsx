@@ -3,7 +3,7 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, connectAuthEmulator, onAuthStateChanged, signInWithEmailAndPassword, signInWithCustomToken, signOut, sendPasswordResetEmail } from 'firebase/auth';
 import { getDatabase, connectDatabaseEmulator, ref, get, onValue, runTransaction, push, set } from 'firebase/database';
 import {
-  BookOpen, Bell, BellRing, CalendarClock, Check, CheckCircle2,
+  BookOpen, Bell, BellRing, CalendarClock, Check, CheckCircle2, WifiOff, CloudUpload, RefreshCcw,
   CircleDollarSign, Download, History, LockKeyhole, UserRound,
   LogOut, Menu, Minus, Plus, Search, ShieldCheck, UsersRound, Wallet, X,
   AlertTriangle, GraduationCap, ArrowDownRight, Eye, EyeOff, LayoutDashboard, UserCog, FileSpreadsheet, PauseCircle, PlayCircle,
@@ -1055,8 +1055,14 @@ export default function App() {
           <button onClick={()=>{instalar();setMostrarMenu(false);}}>Instalar app</button>
         </nav>}
       {!tieneAcceso ? <AccesoSalon abrirLogin={()=>setLoginOpen(true)} ingresarConCodigo={ingresarConCodigo}
-        ocupado={!!operacion} error={errorAcceso} modoDemo={usarEmuladores}/> : <main className="ag-main">
-        {dbError&&<div className="ag-error"><AlertTriangle size={18}/> {dbError}</div>}
+        ocupado={!!operacion} error={errorAcceso} modoDemo={usarEmuladores} sinConexion={!enLinea}/> : <main className="ag-main">
+        {!enLinea&&<div className="ag-offline-banner" role="status">
+          <WifiOff size={20}/><div><strong>Modo sin conexión</strong>
+          <span>Última información guardada. Los cambios estarán pendientes hasta conectar.
+          {vistaOffline?.actualizadoEn&&` Último respaldo: ${fechaLarga(vistaOffline.actualizadoEn)}.`}</span></div>
+        </div>}
+        {enLinea&&sincronizandoOffline&&<div className="ag-sync-banner" role="status"><RefreshCcw size={19}/> Sincronizando pagos pendientes…</div>}
+        {dbError&&<div className="ag-error"><AlertTriangle size={18}/> {dbError}</div>
         <div className="ag-intro ag-intro-compact"><div><span className="ag-kicker">{esAdminGeneral?'ADMINISTRACIÓN GENERAL':esResponsable?`RESPONSABLE · SALÓN ${salonId}`:`SALÓN ${salonId}`} {periodo?.meta?.cerradoEn?' · CICLO ARCHIVADO':''}</span><h1>{esAdminGeneral?'Panel general':esAdmin?'Registro de pagos':'Mi ahorro grupal'}</h1></div><div className="ag-week-pill ag-week-monthly"><CalendarClock size={18}/><span><strong>{semanaActualEtiqueta}</strong></span></div></div>
         {vacacionesActivas&&<div className="ag-note"><PauseCircle size={17}/> Vacaciones activas: {semanaActualEtiqueta} congelada. No se registran aportaciones ni nuevas semanas pendientes.</div>}
         {esAdminGeneral&&<div className="ag-selectors">
@@ -1111,6 +1117,20 @@ export default function App() {
           </Panel>
         </>}
         {vistaActiva==='pagos'&&<>
+          {movimientosActuales.length>0&&<section className="ag-offline-queue" aria-label="Capturas guardadas sin conexión">
+            <div className="ag-offline-queue-head"><CloudUpload size={19}/>
+              <strong>{movimientosActuales.length} captura(s) {enLinea?'pendientes':'guardadas sin conexión'}</strong>
+              {enLinea&&<SmallButton disabled={sincronizandoOffline} onClick={()=>setReintentarOffline(v=>v+1)}><RefreshCcw size={16}/> Sincronizar</SmallButton>}
+            </div>
+            {movimientosActuales.map(m=><div className="ag-offline-queue-row" key={m.clave}>
+              <div><strong>{m.nombre||m.estudianteId}</strong>
+                <small>{etiquetaSemana(m.periodo,m.semana,periodos[m.periodo]?.meta)} · {m.deseado==='pagado'?'Agregar pago':'Anular pago'}</small>
+                <small className={m.estado==='conflicto'?'ag-sync-conflict':'ag-sync-pending'}>
+                  {m.estado==='conflicto'?m.mensaje||'Conflicto con otro registro':'Aún no confirmado en Firebase'}
+                </small></div>
+              {m.estado==='conflicto'&&<SmallButton onClick={()=>descartarMovimiento(m)}>Descartar intento</SmallButton>}
+            </div>)}
+          </section>}
           {!esAdmin&&<MiRegistro salon={salonId} semana={semanaActualEtiqueta} lista={lista}
             seleccionado={registroFijado} pagos={pagos} estado={estadoMiRegistro} guardar={guardarRegistroFijado}/>}
           {esAdmin&&<section className="ag-week-glance" aria-label="Avance semanal">
@@ -1133,7 +1153,7 @@ export default function App() {
             {esAnterior&&<div className="ag-note"><History size={16}/> Los pagos de este periodo se mantienen separados del fondo actual y no generan deudas automáticas.</div>}
             <div className="ag-toolbar"><label className="ag-search"><Search size={17}/><input placeholder="Buscar por nombre o control..." value={search} onChange={e=>setSearch(e.target.value)}/></label><div className="ag-filters"><button className={filtro==='todos'?'active':''} onClick={()=>setFiltro('todos')}>Todos</button><button className={filtro==='pagado'?'active':''} onClick={()=>setFiltro('pagado')}>Pagaron</button><button className={filtro==='pendiente'?'active':''} onClick={()=>setFiltro('pendiente')}>{esAnterior?'Sin registrar':'Pendientes'}</button></div></div>
             {!vigenteParaRegistrar&&<div className="ag-note"><History size={16}/> Esta semana corresponde al historial anterior o a un periodo sin registros detallados. No se muestran supuestos adeudos.</div>}
-            <div className="ag-student-list">{visible.map(e=>{const estado=estadoAlumno(e);return <article className={`ag-student${!esAdmin&&registroFijado===e.id?' ag-student-pinned':''}`} key={e.id}><span className="ag-avatar" aria-hidden="true"><UserRound size={22} strokeWidth={2.2}/></span><div className="ag-student-info"><strong title={e.nombre}>{e.nombreVisible}</strong></div><span className={`ag-status ag-status-${estado}`}>{estado==='pagado'?<><Check size={14}/> Pagó</>:estado==='pendiente'?(esAnterior?'Sin registrar':'Pendiente'):'Sin desglose'}</span>{esAdmin&&vigenteParaRegistrar&&!vacacionesActivas&&!periodo?.meta?.cerradoEn&&<div className="ag-pay-actions">{estado==='pagado' ? (esAnterior&&esPagoLegado(pagosLegado,e.id,semana) ? <span title="Pago legado conservado; no se puede modificar aquí"><LockKeyhole size={18}/></span> : <button title="Anular el pago (un toque; se conserva en el historial)" aria-label={`Anular aporte de ${e.nombreVisible} en ${etiquetaSemana(periodoId,semana,periodo?.meta)}`} disabled={!!operacion} onClick={()=>anularPago(e)}><Minus size={17}/></button>) : <button title={`Registrar ${pesos(cuotaSemanal)} esta semana`} disabled={!!operacion} onClick={()=>registrarPago(e)}><Plus size={18}/></button>}</div>}</article>;})}{!visible.length&&<div className="ag-empty-small">No hay integrantes para este filtro.</div>}</div>
+            <div className="ag-student-list">{visible.map(e=>{const estado=estadoAlumno(e),pendienteLocal=pendienteDe(e);return <article className={`ag-student${!esAdmin&&registroFijado===e.id?' ag-student-pinned':''}`} key={e.id}><span className="ag-avatar" aria-hidden="true"><UserRound size={22} strokeWidth={2.2}/></span><div className="ag-student-info"><strong title={e.nombre}>{e.nombreVisible}</strong></div><span className={`ag-status ag-status-${estado}`}>{estado==='pagado'?<><Check size={14}/> Pagó</>:estado==='pendiente'?(esAnterior?'Sin registrar':'Pendiente'):'Sin desglose'}</span>{pendienteLocal&&<span className="ag-local-indicator">Sin sincronizar</span>}{esAdmin&&vigenteParaRegistrar&&!vacacionesActivas&&!periodo?.meta?.cerradoEn&&<div className="ag-pay-actions">{estado==='pagado' ? (esAnterior&&esPagoLegado(pagosLegado,e.id,semana) ? <span title="Pago legado conservado; no se puede modificar aquí"><LockKeyhole size={18}/></span> : <button title="Anular el pago (un toque; se conserva en el historial)" aria-label={`Anular aporte de ${e.nombreVisible} en ${etiquetaSemana(periodoId,semana,periodo?.meta)}`} disabled={!!operacion||sincronizandoOffline||(enLinea&&!!pendienteLocal)} onClick={()=>anularPago(e)}><Minus size={17}/></button>) : <button title={`Registrar ${pesos(cuotaSemanal)} esta semana`} disabled={!!operacion||sincronizandoOffline||(enLinea&&!!pendienteLocal)} onClick={()=>registrarPago(e)}><Plus size={18}/></button>}</div>}</article>;})}{!visible.length&&<div className="ag-empty-small">No hay integrantes para este filtro.</div>}</div>
             <div className="ag-list-foot">{vigenteParaRegistrar?`${pagaron} pagaron · ${pendientes} pendientes`:'No hay desglose disponible para esta semana'}</div>
           </Panel>}
           </details>
