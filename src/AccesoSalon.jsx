@@ -15,7 +15,7 @@ export default function AccesoSalon({abrirLogin,ingresarConCodigo,ocupado,error,
   const [codigo,setCodigo]=useState('');
 
   useEffect(()=>{
-    if(modoDemo||sinConexion){if(sinConexion)setCargando(false);return;}
+    if(modoDemo||sinConexion)return;
     let vivo=true;
     fetch('/api/salones-disponibles',{cache:'no-store'})
       .then(async r=>{const d=await r.json();if(!r.ok)throw Error(d.error||'No se pudo consultar los salones.');return d;})
@@ -49,7 +49,7 @@ export default function AccesoSalon({abrirLogin,ingresarConCodigo,ocupado,error,
       <h2 className="ag-access-subtitle">1. Selecciona tu salón</h2>
       <p className="ag-muted">Elige el grupo al que perteneces.</p>
       {errorCatalogo&&<div className="ag-error">{errorCatalogo}</div>}
-      {cargando?<p className="ag-muted">Consultando salones disponibles…</p>:
+      {cargando&&!sinConexion?<p className="ag-muted">Consultando salones disponibles…</p>:
         <div className="ag-access-rooms">
           {salones.map(s=><button type="button" key={`${s.periodo}/${s.salon}`}
             className={seleccion===`${s.periodo}/${s.salon}`?'active':''}
