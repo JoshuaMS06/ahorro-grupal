@@ -276,6 +276,52 @@ export default function App() {
     void cargar();
     return ()=>{cancelado=true;};
   },[esAdminGeneral,usuario,vista,periodoId,responsables,enLinea]);
+  // La copia se guarda SOLAMENTE tras una lectura en línea y autorizada
+  // por Firebase. No se almacena PIN, token o información de otros salones.
+  useEffect(()=>{
+    if(!enLinea||!usuario||!tieneAcceso||!periodoId||!salonId
+      ||dataSnapshot?.source!=='servidor'||!periodos[periodoId]?.meta)return;
+    const rol=esAdminGeneral?'general':esResponsable?'responsable':'alumno';
+    void guardarVistaOffline({
+      uid:usuario.uid,periodo:periodoId,salon:salonId,rol,
+      metaPeriodo:periodos[periodoId].meta,
+      metaSalon:periodos[periodoId].salones?.[salonId]||{nombre:`Salón ${salonId}`},
+      datos:dataSnapshot.value,
+      reporte:rol==='alumno'?null:estadoReporteFondos?.clave===`${periodoId}/${salonId}`
+        &&estadoReporteFondos?.uid===usuario.uid?estadoReporteFondos.informe:null
+    }).catch(error=>console.warn('No se pudo guardar consulta offline:',error?.message||'error'));
+  },[enLinea,usuario,tieneAcceso,periodoId,salonId,dataSnapshot,periodos,
+    esAdminGeneral,esResponsable,estadoReporteFondos]);
+
+  // Si se abre la PWA en la universidad sin red, reconstruir la última
+  // pantalla del mismo UID cuya sesión Firebase sigue guardada.
+  useEffect(()=>{
+    if(!usuario||enLinea)return;
+    let vigente=true;
+    void leerVistaOffline(usuario.uid,periodoId,salonId).then(v=>{
+      if(!vigente||!v||auth.currentUser?.uid!==v.uid)return;
+      setVistaOffline(v);
+      setPeriodoId(v.periodo);setSalonId(v.salon);
+      setPeriodos({[v.periodo]:{meta:v.metaPeriodo,
+        salones:{[v.salon]:v.metaSalon}}});
+      setDataSnapshot({periodo:v.periodo,salon:v.salon,value:v.datos,source:'offline'});
+      setCargando(false);setDbError('');setVista('pagos');
+      if(v.reporte)setReporteFondos({clave:`${v.periodo}/${v.salon}`,uid:v.uid,informe:v.reporte});
+    }).catch(error=>{
+      if(vigente)setErrorAcceso('No se encontró una copia disponible. Abre la app una vez con internet para preparar el acceso offline.');
+      console.warn('Lectura offline:',error?.message||'error');
+    });
+    return ()=>{vigente=false;};
+  },[usuario,enLinea,periodoId,salonId]);
+
+  useEffect(()=>{
+    if(!usuario){setPendientesOffline([]);return;}
+    let vigente=true;
+    void leerPendientesOffline(usuario.uid).then(lista=>{if(vigente)setPendientesOffline(lista);})
+      .catch(error=>console.warn('No se pudo consultar la cola offline:',error?.message||'error'));
+    return ()=>{vigente=false;};
+  },[usuario]);
+
   useEffect(()=>{
     const tick=()=>{ const now=Date.now(); setFecha(prev=>fechaMexico(prev)===fechaMexico(now)?prev:now); };
     const timer=setInterval(tick,1000);
