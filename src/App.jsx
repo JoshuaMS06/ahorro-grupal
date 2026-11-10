@@ -19,7 +19,7 @@ import { distribucionNueva, generacionDeAula, resumirFondos } from '../lib/fondo
 import { informeVisibleSegunRol } from '../lib/informeRoles.js';
 import {listarAvisosCarrera} from '../lib/avisosCarrera.js';
 import {claveRegistroPersonal,leerRegistrosFijados,fijarRegistroPersonal} from '../lib/registroPersonal.js';
-import {guardarVistaOffline,leerVistaOffline,leerPendientesOffline,guardarPendienteOffline,eliminarPendienteOffline,claveMovimiento} from '../lib/offlineStore.js';
+import {guardarVistaOffline,leerVistaOffline,borrarVistaOffline,leerPendientesOffline,guardarPendienteOffline,eliminarPendienteOffline,claveMovimiento} from '../lib/offlineStore.js';
 import {crearMovimientoConIdentidad,versionPago,cambiarDeseado} from '../lib/offlinePayments.js';
 import MiRegistro from './MiRegistro.jsx';
 import { periodoSiguiente, salonSiguiente } from '../lib/semestres.js';
@@ -91,6 +91,7 @@ export default function App() {
   const [cargando,setCargando]=useState(true);
   const [enLinea,setEnLinea]=useState(()=>navigator.onLine);
   const [vistaOffline,setVistaOffline]=useState(null);
+  const [copiaOfflineLista,setCopiaOfflineLista]=useState(false);
   const [pendientesOffline,setPendientesOffline]=useState([]);
   const [sincronizandoOffline,setSincronizandoOffline]=useState(false);
   const [reintentarOffline,setReintentarOffline]=useState(0);
@@ -316,7 +317,8 @@ export default function App() {
       datos:dataSnapshot.value,
       reporte:rol==='alumno'?null:estadoReporteFondos?.clave===`${periodoId}/${salonId}`
         &&estadoReporteFondos?.uid===usuario.uid?estadoReporteFondos.informe:null
-    }).catch(error=>console.warn('No se pudo guardar consulta offline:',error?.message||'error'));
+    }).then(()=>setCopiaOfflineLista(true))
+      .catch(error=>{setCopiaOfflineLista(false);console.warn('No se pudo guardar consulta offline:',error?.message||'error');});
   },[enLinea,usuario,tieneAcceso,periodoId,salonId,dataSnapshot,periodos,
     esAdminGeneral,esResponsable,estadoReporteFondos]);
 
@@ -620,6 +622,21 @@ export default function App() {
       localStorage.setItem('ag:salon',salon);
     }catch(error){setErrorAcceso(error.message||'No fue posible ingresar a tu salón.');}
     finally{setOperacion('');}
+  };
+  const cerrarSesion=async()=>{
+    if(!usuario)return;
+    const guardados=pendientesOffline.filter(m=>m.uid===usuario.uid).length;
+    if((!enLinea||guardados>0)&&!window.confirm(
+      guardados>0
+        ?`Tienes ${guardados} pago(s) SIN sincronizar. Si cierras sesión, seguirán guardados, pero no se enviarán hasta que vuelvas a iniciar sesión con internet. ¿Continuar?`
+        :'Sin conexión no podrás ingresar de nuevo hasta recuperar internet. ¿Cerrar la sesión guardada?'
+    ))return;
+    const uid=usuario.uid;
+    try{
+      await signOut(auth);
+      setVistaOffline(null);setCopiaOfflineLista(false);
+      await borrarVistaOffline(uid);
+    }catch(error){setToast('No se pudo cerrar completamente la sesión: '+(error?.message||'Error'));}
   };
   const signIn=async e=>{
     e.preventDefault();setLoginBusy(true);setLoginError('');
@@ -1073,7 +1090,7 @@ export default function App() {
         <div className="ag-brand"><img src="/icons/cerdito-192.png" alt="Cerdito de Ahorro Grupal"/><div><strong>Ahorro<span>Grupal</span></strong><small>Ingeniería Industrial</small></div></div>
         <div className="ag-header-actions">
           {tieneAcceso ? <span className="ag-admin-pill"><ShieldCheck size={16}/> {esAdminGeneral?'Admin. general':esResponsable?`Responsable ${salonId}`:`Salón ${salonId}`}</span> : <button className="ag-icon" type="button" title="Acceso administrativo" onClick={()=>setLoginOpen(true)}><LockKeyhole size={21}/></button>}
-          {usuario&&<button className="ag-icon" type="button" title="Cerrar sesión" onClick={()=>signOut(auth)}><LogOut size={19}/></button>}
+          {usuario&&<button className="ag-icon" type="button" title="Cerrar sesión" onClick={cerrarSesion}><LogOut size={19}/></button>}
           {(!tieneAcceso||esAdmin)&&<button className="ag-icon" type="button" title="Menú" onClick={()=>setMostrarMenu(!mostrarMenu)}><Menu size={22}/></button>}
         </div>
       </header>
@@ -1358,7 +1375,7 @@ export default function App() {
         <SmallButton onClick={()=>setEnlaceResponsable(null)}>Cerrar</SmallButton>
       </div>
     </div>}
-    {loginOpen&&<div className="ag-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setLoginOpen(false);}}><div className="ag-modal" role="dialog" aria-modal="true" aria-label="Iniciar sesión"><button className="ag-modal-close" onClick={()=>setLoginOpen(false)}><X size={20}/></button><div className="ag-modal-mark"><LockKeyhole size={26}/></div><h2>Iniciar sesión</h2><p>Inicia sesión con el correo y la contraseña de tu cuenta. Para estudiantes basta el código de su salón. Este inicio de sesión es para administradores y responsables.</p><form onSubmit={signIn}><label>Correo electrónico<input type="email" autoComplete="username" required value={email} onChange={e=>setEmail(e.target.value)}/></label><label>Contraseña<div className="ag-password"><input type={seePassword?'text':'password'} autoComplete="current-password" required value={password} onChange={e=>setPassword(e.target.value)}/><button type="button" onClick={()=>setSeePassword(!seePassword)}>{seePassword?<EyeOff size={18}/>:<Eye size={18}/>}</button></div></label>{loginError&&<div className="ag-error">{loginError}</div>}<SmallButton type="submit" variant="primary" disabled={loginBusy}><ShieldCheck size={18}/> {loginBusy?'Verificando…':'Iniciar sesión'}</SmallButton></form><button className="ag-link" type="button" onClick={resetPassword}>¿Olvidaste tu contraseña?</button>{usuario&&!tieneAcceso&&<button className="ag-link" type="button" onClick={()=>signOut(auth)}>Cerrar sesión actual</button>}</div></div>}
+    {loginOpen&&<div className="ag-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setLoginOpen(false);}}><div className="ag-modal" role="dialog" aria-modal="true" aria-label="Iniciar sesión"><button className="ag-modal-close" onClick={()=>setLoginOpen(false)}><X size={20}/></button><div className="ag-modal-mark"><LockKeyhole size={26}/></div><h2>Iniciar sesión</h2><p>Inicia sesión con el correo y la contraseña de tu cuenta. Para estudiantes basta el código de su salón. Este inicio de sesión es para administradores y responsables.</p><form onSubmit={signIn}><label>Correo electrónico<input type="email" autoComplete="username" required value={email} onChange={e=>setEmail(e.target.value)}/></label><label>Contraseña<div className="ag-password"><input type={seePassword?'text':'password'} autoComplete="current-password" required value={password} onChange={e=>setPassword(e.target.value)}/><button type="button" onClick={()=>setSeePassword(!seePassword)}>{seePassword?<EyeOff size={18}/>:<Eye size={18}/>}</button></div></label>{loginError&&<div className="ag-error">{loginError}</div>}<SmallButton type="submit" variant="primary" disabled={loginBusy}><ShieldCheck size={18}/> {loginBusy?'Verificando…':'Iniciar sesión'}</SmallButton></form><button className="ag-link" type="button" onClick={resetPassword}>¿Olvidaste tu contraseña?</button>{usuario&&!tieneAcceso&&<button className="ag-link" type="button" onClick={cerrarSesion}>Cerrar sesión actual</button>}</div></div>}
     {modalInstalar&&<div className="ag-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setModalInstalar(false);}}><div className="ag-modal" role="dialog" aria-modal="true" aria-label="Instalar aplicación"><button className="ag-modal-close" onClick={()=>setModalInstalar(false)}><X size={20}/></button><img src="/icons/cerdito-192.png" alt="Cerdito" width="80" height="80"/><h2>Instalar AhorroGrupal</h2><p>Android: menú de Chrome → Instalar app. iPhone: Safari → Compartir → Añadir a inicio. Computadora: opción Instalar en Chrome o Edge.</p></div></div>}
   </div>;
 }
