@@ -500,6 +500,7 @@ export default function App() {
     let cancelado=false;
     sincronizandoRef.current=true;
     const procesar=async()=>{
+      let resultado=pendientesOffline,cambios=false;
       setSincronizandoOffline(true);
       try{
         for(const m of listos){
@@ -516,11 +517,13 @@ export default function App() {
             const body=await respuesta.json().catch(()=>({}));
             if(respuesta.ok&&body.ok){
               await eliminarPendienteOffline(m.clave);
-              if(!cancelado)setPendientesOffline(actual=>actual.filter(p=>p.clave!==m.clave));
+              resultado=resultado.filter(p=>p.clave!==m.clave);
+              cambios=true;
             }else if(respuesta.status===409&&body.conflicto){
               const conError={...m,estado:'conflicto',mensaje:body.error||'El pago cambió en otro dispositivo.'};
               await guardarPendienteOffline(conError);
-              if(!cancelado)setPendientesOffline(actual=>actual.map(p=>p.clave===m.clave?conError:p));
+              resultado=resultado.map(p=>p.clave===m.clave?conError:p);
+              cambios=true;
             }else{
               // Sin red, token caducado o error del servidor: conservar
               // íntegro el movimiento para un futuro reintento.
@@ -530,12 +533,15 @@ export default function App() {
         }
       }finally{
         sincronizandoRef.current=false;
-        if(!cancelado)setSincronizandoOffline(false);
+        if(!cancelado){
+          if(cambios)setPendientesOffline(resultado);
+          setSincronizandoOffline(false);
+        }
       }
     };
     void procesar();
     return ()=>{cancelado=true;};
-  },[enLinea,esAdmin,esAdminGeneral,usuario,dataSnapshot,pendientesOffline,
+  },[enLinea,esAdmin,esAdminGeneral,usuario,dataSnapshot?.source,pendientesOffline,
       periodoId,salonId,reintentarOffline]);
 
   const descartarMovimiento=async mov=>{
