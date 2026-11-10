@@ -40,7 +40,7 @@ function memoriaIndexedDB(){
            };
            transaccion.objectStore=()=>({
              put:v=>operacion(()=>{tabla.set(v.clave,structuredClone(v));return v.clave;}),
-             getAll:()=>operacion(()=>[...tabla.values()].map(structuredClone)),
+             getAll:()=>operacion(()=>[...tabla.values()].map(v=>structuredClone(v))),
              delete:k=>operacion(()=>{tabla.delete(k);return undefined;})
            });
            return transaccion;
