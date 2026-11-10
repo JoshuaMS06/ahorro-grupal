@@ -3,7 +3,7 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, connectAuthEmulator, onAuthStateChanged, signInWithEmailAndPassword, signInWithCustomToken, signOut, sendPasswordResetEmail } from 'firebase/auth';
 import { getDatabase, connectDatabaseEmulator, ref, get, onValue, runTransaction, push, set } from 'firebase/database';
 import {
-  BookOpen, Bell, BellRing, CalendarClock, Check, CheckCircle2,
+  BookOpen, Bell, BellRing, CalendarClock, Check, CheckCircle2, WifiOff, CloudUpload, RefreshCcw,
   CircleDollarSign, Download, History, LockKeyhole, UserRound,
   LogOut, Menu, Minus, Plus, Search, ShieldCheck, UsersRound, Wallet, X,
   AlertTriangle, GraduationCap, ArrowDownRight, Eye, EyeOff, LayoutDashboard, UserCog, FileSpreadsheet, PauseCircle, PlayCircle,
@@ -19,6 +19,8 @@ import { distribucionNueva, generacionDeAula, resumirFondos } from '../lib/fondo
 import { informeVisibleSegunRol } from '../lib/informeRoles.js';
 import {listarAvisosCarrera} from '../lib/avisosCarrera.js';
 import {claveRegistroPersonal,leerRegistrosFijados,fijarRegistroPersonal} from '../lib/registroPersonal.js';
+import {guardarVistaOffline,leerVistaOffline,borrarVistaOffline,leerPendientesOffline,guardarPendienteOffline,eliminarPendienteOffline,claveMovimiento} from '../lib/offlineStore.js';
+import {crearMovimientoConIdentidad,versionPago,cambiarDeseado} from '../lib/offlinePayments.js';
 import MiRegistro from './MiRegistro.jsx';
 import { periodoSiguiente, salonSiguiente } from '../lib/semestres.js';
 import { prepararExcel, revisarCoincidencias } from '../lib/importarExcel.js';
@@ -87,6 +89,13 @@ export default function App() {
   const [salonId,setSalonId]=useState(()=>localStorage.getItem('ag:salon')||'507');
   const [dataSnapshot,setDataSnapshot]=useState(null);
   const [cargando,setCargando]=useState(true);
+  const [enLinea,setEnLinea]=useState(()=>navigator.onLine);
+  const [vistaOffline,setVistaOffline]=useState(null);
+  const [copiaOfflineLista,setCopiaOfflineLista]=useState(false);
+  const [pendientesOffline,setPendientesOffline]=useState([]);
+  const [sincronizandoOffline,setSincronizandoOffline]=useState(false);
+  const [reintentarOffline,setReintentarOffline]=useState(0);
+  const sincronizandoRef=useRef(false);
   const [dbError,setDbError]=useState('');
   const [usuario,setUsuario]=useState(null);
   const [uidAdminGeneral,setUidAdminGeneral]=useState('');
@@ -132,13 +141,21 @@ export default function App() {
   const primerEvento=useRef(null);
   const inicioEscuchaAvisos=useRef(0);
   const intentoIngresoExtra=useRef(null);
-  const esAdminGeneral=Boolean(usuario && uidAdminGeneral && uidAdminGeneral===usuario.uid);
-  const esResponsable=Boolean(usuario && !esAdminGeneral && esResponsableDeSalon(asignacion,periodoId,salonId));
+  const vistaLocalAutorizada=!enLinea&&vistaOffline?.uid===usuario?.uid
+    &&vistaOffline?.periodo===periodoId&&vistaOffline?.salon===salonId;
+  const esAdminGeneral=Boolean(usuario && ((uidAdminGeneral && uidAdminGeneral===usuario.uid)
+    ||(vistaLocalAutorizada&&vistaOffline.rol==='general')));
+  const esResponsable=Boolean(usuario && !esAdminGeneral
+    &&(esResponsableDeSalon(asignacion,periodoId,salonId)
+      ||(vistaLocalAutorizada&&vistaOffline.rol==='responsable')));
   const esAdmin=esAdminGeneral || esResponsable;
   const esLector=Boolean(usuario && !esAdmin && asignacionLector?.periodo===periodoId && asignacionLector?.salon===salonId);
-  const esInvitadoCodigo=Boolean(usuario && sesionCodigo?.periodo===periodoId && sesionCodigo?.salon===salonId);
+  const esInvitadoCodigo=Boolean(usuario && ((sesionCodigo?.periodo===periodoId && sesionCodigo?.salon===salonId)
+    ||(vistaLocalAutorizada&&vistaOffline.rol==='alumno')));
   const tieneAcceso=esAdmin || esLector || esInvitadoCodigo;
-  const vistaActiva=esAdminGeneral?vista:(esResponsable?(vista==='panel'?'pagos':vista):'pagos');
+  const vistaActiva=!enLinea
+    ?(esAdminGeneral&&vista==='panel'?'panel':'pagos')
+    :(esAdminGeneral?vista:(esResponsable?(vista==='panel'?'pagos':vista):'pagos'));
   const datos=dataSnapshot?.periodo===periodoId && dataSnapshot?.salon===salonId ? dataSnapshot.value : null;
   const reporteClave=`${periodoId}/${salonId}`;
   const reporteFondos=tieneAcceso && estadoReporteFondos?.clave===reporteClave && estadoReporteFondos?.uid===usuario?.uid ? estadoReporteFondos.informe : null;
@@ -146,15 +163,48 @@ export default function App() {
 
 
   useEffect(()=>{inicioEscuchaAvisos.current=Date.now();},[]);
+  useEffect(()=>{
+    let vivo=true,controlador=null;
+    const probar=async()=>{
+      if(!navigator.onLine){if(vivo)setEnLinea(false);return;}
+      controlador?.abort();
+      const intento=new AbortController();
+      controlador=intento;
+      const limite=setTimeout(()=>intento.abort(),4500);
+      try{
+        // Solicitud real sin caché: navigator.onLine puede indicar conexión
+        // aun cuando la red universitaria no tiene acceso a internet.
+        const r=await fetch(`/api/salones-disponibles?conexion=${Date.now()}`,{
+          cache:'no-store',signal:intento.signal
+        });
+        if(!r.ok)throw Error('Red inalcanzable');
+        if(vivo)setEnLinea(true);
+      }catch{if(vivo)setEnLinea(false);}
+      finally{clearTimeout(limite);}
+    };
+    const desconectar=()=>{controlador?.abort();if(vivo)setEnLinea(false);};
+    const visible=()=>{if(!document.hidden)void probar();};
+    window.addEventListener('online',probar);
+    window.addEventListener('offline',desconectar);
+    document.addEventListener('visibilitychange',visible);
+    const intervalo=setInterval(()=>void probar(),45000);
+    void probar();
+    return ()=>{
+      vivo=false;controlador?.abort();clearInterval(intervalo);
+      window.removeEventListener('online',probar);
+      window.removeEventListener('offline',desconectar);
+      document.removeEventListener('visibilitychange',visible);
+    };
+  },[]);
 
   // Nuevos roles: un solo administrador general y dos plazas por salón.
   // Antes de publicar se deben configurar roles/adminGeneralUid y probar las reglas en el emulador.
   useEffect(()=>{
     const unsub=onAuthStateChanged(auth,u=>{
-      setUsuario(u);setUidAdminGeneral('');setAsignacion(null);setAsignacionLector(null);setSesionCodigo(null);setErrorAcceso('');setLoginError('');
+      setUsuario(u);setUidAdminGeneral('');setAsignacion(null);setAsignacionLector(null);setSesionCodigo(null);setVistaOffline(null);setErrorAcceso('');setLoginError('');
       // La sesión firmada por Firebase contiene exclusivamente salón, ciclo y
       // versión del código. Nunca se confía en un selector guardado en el navegador.
-      if(u){
+      if(u&&navigator.onLine){
         void u.getIdTokenResult().then(({claims})=>{
           if(auth.currentUser?.uid!==u.uid||claims.rolSalon!=='consulta')return;
           const {periodoCodigo,salonCodigo}=claims;
@@ -174,7 +224,27 @@ export default function App() {
     return ()=>unsub();
   },[]);
   useEffect(()=>{
-    if(!usuario)return;
+    if(!usuario||!enLinea)return;
+    // Una sesión de alumno conservada offline debe recuperar sus claims
+    // al volver internet: onAuthStateChanged no necesariamente vuelve a correr.
+    let vigente=true;
+    void usuario.getIdTokenResult().then(({claims})=>{
+      if(!vigente||auth.currentUser?.uid!==usuario.uid||claims.rolSalon!=='consulta')return;
+      const {periodoCodigo,salonCodigo}=claims;
+      if(!isPeriodId(periodoCodigo)||!isClassCode(salonCodigo))return;
+      setSesionCodigo(actual=>actual?.periodo===periodoCodigo&&actual?.salon===salonCodigo
+        ?actual:{periodo:periodoCodigo,salon:salonCodigo});
+      setPeriodoId(actual=>actual===periodoCodigo?actual:periodoCodigo);
+      setSalonId(actual=>actual===salonCodigo?actual:salonCodigo);
+      localStorage.setItem('ag:periodo',periodoCodigo);
+      localStorage.setItem('ag:salon',salonCodigo);
+    }).catch(error=>{
+      if(vigente)console.warn('Autorización al reconectar:',error?.code||'error');
+    });
+    return ()=>{vigente=false;};
+  },[usuario,enLinea]);
+  useEffect(()=>{
+    if(!usuario||!enLinea)return;
     const stop1=onValue(ref(database,'roles/adminGeneralUid'),snap=>{
       const uid=snap.val()||'';
       setUidAdminGeneral(uid);
@@ -191,9 +261,9 @@ export default function App() {
       }
     },err=>setLoginError(`No se pudo leer tu grupo: ${avisoError(err)}`));
     return ()=>{stop1();stop2();};
-  },[usuario]);
+  },[usuario,enLinea]);
   useEffect(()=>{
-    if(!usuario)return;
+    if(!usuario||!enLinea)return;
     const stopRol=onValue(ref(database,`roles/lectores/${usuario.uid}`),snap=>{
       const rol=snap.val()||null;
       setAsignacionLector(rol);
@@ -206,9 +276,9 @@ export default function App() {
       }
     },err=>setErrorAcceso(`No se pudo consultar tu autorización: ${avisoError(err)}`));
     return ()=>stopRol();
-  },[usuario]);
+  },[usuario,enLinea]);
   useEffect(()=>{
-    if(!tieneAcceso)return;
+    if(!tieneAcceso||!enLinea)return;
     if(esAdminGeneral){
       const stop=onValue(ref(database,'periodos'),snap=>{
         setPeriodos(snap.val()||{});setDbError('');
@@ -224,25 +294,25 @@ export default function App() {
         salones:{[salonId]:snap.val()||{nombre:`Salón ${salonId}`}}}}));
     },err=>setDbError(avisoError(err)));
     return ()=>{stopMeta();stopSalon();};
-  },[tieneAcceso,esAdminGeneral,periodoId,salonId]);
+  },[tieneAcceso,esAdminGeneral,periodoId,salonId,enLinea]);
   useEffect(()=>{
-    if(!tieneAcceso)return;
-    const stop=onValue(ref(database,`aulas/${periodoId}/${salonId}`),snap=>{setDataSnapshot({periodo:periodoId,salon:salonId,value:snap.val()});setCargando(false);setDbError('');},err=>{setCargando(false);setDbError(avisoError(err));});
+    if(!tieneAcceso||!enLinea)return;
+    const stop=onValue(ref(database,`aulas/${periodoId}/${salonId}`),snap=>{setDataSnapshot({periodo:periodoId,salon:salonId,value:snap.val(),source:'servidor'});setCargando(false);setDbError('');},err=>{setCargando(false);setDbError(avisoError(err));});
     return ()=>stop();
-  },[tieneAcceso,periodoId,salonId]);
+  },[tieneAcceso,periodoId,salonId,enLinea]);
   useEffect(()=>{
-    if(!esAdminGeneral)return;
+    if(!esAdminGeneral||!enLinea)return;
     const stop1=onValue(ref(database,'roles/responsables'),snap=>setResponsables(snap.val()||{}),err=>setDbError(avisoError(err)));
     return ()=>stop1();
-  },[esAdminGeneral]);
+  },[esAdminGeneral,enLinea]);
   useEffect(()=>{
-    if(!esAdminGeneral || vista!=='profesores')return;
+    if(!esAdminGeneral || !enLinea || vista!=='profesores')return;
     const stop=onValue(ref(database,'profesoresAhorro'),snap=>{setPagosProfesores(snap.val()||{});setErrorProfesores('');},
       err=>setErrorProfesores(`No se pudo consultar el ahorro de profesores: ${avisoError(err)}`));
     return ()=>stop();
-  },[esAdminGeneral,vista,periodoId]);
+  },[esAdminGeneral,vista,periodoId,enLinea]);
   useEffect(()=>{
-    if(!esAdminGeneral||!usuario||vista!=='roles')return;
+    if(!enLinea||!esAdminGeneral||!usuario||vista!=='roles')return;
     let cancelado=false;
     const cargar=async()=>{
       try{
@@ -255,7 +325,62 @@ export default function App() {
     };
     void cargar();
     return ()=>{cancelado=true;};
-  },[esAdminGeneral,usuario,vista,periodoId,responsables]);
+  },[esAdminGeneral,usuario,vista,periodoId,responsables,enLinea]);
+  // La copia se guarda SOLAMENTE tras una lectura en línea y autorizada
+  // por Firebase. No se almacena PIN, token o información de otros salones.
+  useEffect(()=>{
+    if(!enLinea||!usuario||!tieneAcceso||!periodoId||!salonId
+      ||dataSnapshot?.source!=='servidor'||!periodos[periodoId]?.meta)return;
+    const rol=esAdminGeneral?'general':esResponsable?'responsable':'alumno';
+    void guardarVistaOffline({
+      uid:usuario.uid,periodo:periodoId,salon:salonId,rol,
+      metaPeriodo:periodos[periodoId].meta,
+      metaSalon:periodos[periodoId].salones?.[salonId]||{nombre:`Salón ${salonId}`},
+      datos:dataSnapshot.value,
+      reporte:rol==='alumno'?null:estadoReporteFondos?.clave===`${periodoId}/${salonId}`
+        &&estadoReporteFondos?.uid===usuario.uid?estadoReporteFondos.informe:null
+    }).then(async()=>{
+      // La copia es útil para arrancar completamente sin Wi-Fi sólo cuando
+      // el Service Worker terminó de preparar HTML, JS, CSS e iconos.
+      if(import.meta.env.PROD&&'serviceWorker' in navigator)
+        await navigator.serviceWorker.ready;
+      setCopiaOfflineLista(true);
+    }).catch(error=>{
+      setCopiaOfflineLista(false);
+      console.warn('No se pudo preparar acceso offline:',error?.message||'error');
+    });
+  },[enLinea,usuario,tieneAcceso,periodoId,salonId,dataSnapshot,periodos,
+    esAdminGeneral,esResponsable,estadoReporteFondos]);
+
+  // Si se abre la PWA en la universidad sin red, reconstruir la última
+  // pantalla del mismo UID cuya sesión Firebase sigue guardada.
+  useEffect(()=>{
+    if(!usuario||enLinea)return;
+    let vigente=true;
+    void leerVistaOffline(usuario.uid,periodoId,salonId).then(v=>{
+      if(!vigente||!v||auth.currentUser?.uid!==v.uid)return;
+      setVistaOffline(v);
+      setPeriodoId(v.periodo);setSalonId(v.salon);
+      setPeriodos({[v.periodo]:{meta:v.metaPeriodo,
+        salones:{[v.salon]:v.metaSalon}}});
+      setDataSnapshot({periodo:v.periodo,salon:v.salon,value:v.datos,source:'offline'});
+      setCargando(false);setDbError('');setVista('pagos');
+      if(v.reporte)setReporteFondos({clave:`${v.periodo}/${v.salon}`,uid:v.uid,informe:v.reporte});
+    }).catch(error=>{
+      if(vigente)setErrorAcceso('No se encontró una copia disponible. Abre la app una vez con internet para preparar el acceso offline.');
+      console.warn('Lectura offline:',error?.message||'error');
+    });
+    return ()=>{vigente=false;};
+  },[usuario,enLinea,periodoId,salonId]);
+
+  useEffect(()=>{
+    if(!usuario)return;
+    let vigente=true;
+    void leerPendientesOffline(usuario.uid).then(lista=>{if(vigente)setPendientesOffline(lista);})
+      .catch(error=>console.warn('No se pudo consultar la cola offline:',error?.message||'error'));
+    return ()=>{vigente=false;};
+  },[usuario]);
+
   useEffect(()=>{
     const tick=()=>{ const now=Date.now(); setFecha(prev=>fechaMexico(prev)===fechaMexico(now)?prev:now); };
     const timer=setInterval(tick,1000);
@@ -280,7 +405,8 @@ export default function App() {
   const destinoSiguiente=(()=>{try{return periodoSiguiente(periodoId);}catch{return '';}})();
   const salones=Object.keys(periodo?.salones||{}).filter(id=>esAdminGeneral || (asignacion?.periodo===periodoId && asignacion?.salon===id) || (asignacionLector?.periodo===periodoId && asignacionLector?.salon===id) || (sesionCodigo?.periodo===periodoId && sesionCodigo?.salon===id)).sort((a,b)=>a.localeCompare(b,'es',{numeric:true}));
   const vacacionesActivas=periodo?.meta?.vacaciones?.activas===true;
-  const semanaActual=semanaPeriodo(periodo?.meta,fecha);
+  const semanaActual=semanaPeriodo(periodo?.meta,
+    !enLinea&&vistaOffline?.actualizadoEn?vistaOffline.actualizadoEn:fecha);
   const semanaActualEtiqueta=etiquetaSemana(periodoId,semanaActual,periodo?.meta);
   const semanaMinima=Math.max(primeraSemanaVisible(periodos,periodoId,periodo?.meta,datos?.meta),primeraSemanaCalendarioVisible(periodoId,periodo?.meta));
   const semana=Math.max(semanaMinima,Math.min(semanaElegida||semanaActual,semanaActual));
@@ -299,7 +425,10 @@ export default function App() {
       return 'sin-dato';
     const pagosActuales=datos?.[rutaPagoSeleccionado(periodos,periodoId,semanaActual)]||{};
     if(historica&&esPagoLegado(datos?.pagos||{},e.id,semanaActual))return 'pagado';
-    return estadoSemana(pagosActuales,e.id,semanaActual);
+    const remoto=estadoSemana(pagosActuales,e.id,semanaActual);
+    const cambio=pendientesOffline.find(m=>m.uid===usuario?.uid&&m.periodo===periodoId
+      &&m.salon===salonId&&m.estudianteId===e.id&&m.semana===semanaActual);
+    return cambio&&!enLinea?(cambio.deseado==='pagado'?'pagado':'pendiente'):remoto;
   };
   const ahorroNuevoActivo=corteActivo(periodos);
   const esCorteEnSalon=esPeriodoReinicio(periodos,periodoId);
@@ -320,7 +449,7 @@ export default function App() {
     ||!avisosGlobales.some(a=>a.id===`${salonId}_${r.id}`)
   ),[mensajesRetiro,avisosGlobales,salonId]);
   useEffect(()=>{
-    if(!tieneAcceso||!usuario)return;
+    if(!tieneAcceso||!usuario||!enLinea)return;
     let ignorar=false;
     const actualizar=async()=>{
       try{
@@ -350,18 +479,126 @@ export default function App() {
     };
     actualizar();
     return ()=>{ignorar=true;};
-  },[tieneAcceso,esAdminGeneral,esResponsable,usuario,periodoId,salonId,datos,reporteClave,periodos,generacionId,ahorroNuevoActivo]);
+  },[tieneAcceso,esAdminGeneral,esResponsable,usuario,periodoId,salonId,datos,reporteClave,periodos,generacionId,ahorroNuevoActivo,enLinea]);
   const semanaInicio=inicioAportaciones(periodos,periodoId,datos?.meta);
   const vigenteParaRegistrar=semana<=semanaActual && (esAnterior || semana>=semanaInicio)
     && (periodoId!=='2026-2027-A'||ahorroNuevoActivo);
+  const pendienteDe=e=>pendientesOffline.find(m=>m.uid===usuario?.uid
+    &&m.periodo===periodoId&&m.salon===salonId
+    &&m.estudianteId===e.id&&m.semana===semana);
+  const movimientosActuales=pendientesOffline.filter(m=>m.uid===usuario?.uid
+    &&m.periodo===periodoId&&m.salon===salonId);
+  const encolarMovimiento=async(e,deseado)=>{
+    if(!usuario||!esAdmin||!datos?.meta)throw Error('Se necesita una sesión previa y datos del salón para capturar offline.');
+    if(vacacionesActivas||periodo?.meta?.cerradoEn||!vigenteParaRegistrar)
+      throw Error('Esta semana no admite aportaciones.');
+    if(esAnterior&&esPagoLegado(pagosLegado,e.id,semana))
+      throw Error('El pago anterior ya existe y no se puede modificar.');
+    const clave=claveMovimiento(usuario.uid,periodoId,salonId,e.id,semana);
+    const listaLocal=await leerPendientesOffline(usuario.uid);
+    const anterior=listaLocal.find(m=>m.clave===clave);
+    const original=pagosSemana[pagoClave(e.id,semana)]||null;
+    const baseEstado=original?.estado||'pendiente';
+    const estadoOriginal=baseEstado==='pagado'?'pagado':'pendiente';
+    const estadoDeseado=deseado==='pagado'?'pagado':'pendiente';
+    if(estadoOriginal===estadoDeseado){
+      if(anterior)await eliminarPendienteOffline(clave);
+      setPendientesOffline(listaLocal.filter(m=>m.clave!==clave));
+      return;
+    }
+    const nuevo=anterior
+      ?cambiarDeseado(anterior,deseado,baseEstado)
+      :crearMovimientoConIdentidad({
+        uid:usuario.uid,periodo:periodoId,salon:salonId,estudianteId:e.id,semana,
+        nombre:e.nombreVisible||e.nombre,
+        base:{estado:baseEstado,version:versionPago(original)},deseado
+      });
+    if(!nuevo){
+      await eliminarPendienteOffline(clave);
+      setPendientesOffline(listaLocal.filter(m=>m.clave!==clave));
+      return;
+    }
+    await guardarPendienteOffline(nuevo);
+    setPendientesOffline([...listaLocal.filter(m=>m.clave!==clave),nuevo]);
+  };
+  useEffect(()=>{
+    if(!enLinea||!esAdmin||!usuario||dataSnapshot?.source!=='servidor'
+       ||sincronizandoRef.current)return;
+    const listos=pendientesOffline.filter(m=>m.uid===usuario.uid
+      &&m.estado!=='conflicto'
+      &&(esAdminGeneral||(m.periodo===periodoId&&m.salon===salonId)));
+    if(!listos.length)return;
+    sincronizandoRef.current=true;
+    const procesar=async()=>{
+      let resultado=pendientesOffline,cambios=false;
+      setSincronizandoOffline(true);
+      try{
+        for(const m of listos){
+          if(auth.currentUser?.uid!==m.uid)break;
+          try{
+            const token=await usuario.getIdToken();
+            const respuesta=await fetch('/api/resolver-retiro',{
+              method:'POST',cache:'no-store',
+              headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+              body:JSON.stringify({operacion:'pagoOffline',
+                periodo:m.periodo,salon:m.salon,estudianteId:m.estudianteId,
+                semana:m.semana,deseado:m.deseado,baseVersion:m.baseVersion,id:m.id})
+            });
+            const body=await respuesta.json().catch(()=>({}));
+            if(respuesta.ok&&body.ok){
+              await eliminarPendienteOffline(m.clave);
+              resultado=resultado.filter(p=>p.clave!==m.clave);
+              cambios=true;
+            }else if(respuesta.status===409&&body.conflicto){
+              const conError={...m,estado:'conflicto',mensaje:body.error||'El pago cambió en otro dispositivo.'};
+              await guardarPendienteOffline(conError);
+              resultado=resultado.map(p=>p.clave===m.clave?conError:p);
+              cambios=true;
+            }else{
+              // Sin red, token caducado o error del servidor: conservar
+              // íntegro el movimiento para un futuro reintento.
+              break;
+            }
+          }catch{break;}
+        }
+      }finally{
+        sincronizandoRef.current=false;
+        if(cambios)setPendientesOffline(resultado);
+        setSincronizandoOffline(false);
+      }
+    };
+    // No cancelar el lote al recibir un onValue de Firebase: cada pago
+    // confirmado provoca un render y de otro modo quedarían pagos varados.
+    // La autorización se verifica en CADA llamada y el UID se comprueba arriba.
+    void procesar();
+  },[enLinea,esAdmin,esAdminGeneral,usuario,dataSnapshot?.source,pendientesOffline,
+      periodoId,salonId,reintentarOffline]);
+
+  const descartarMovimiento=async mov=>{
+    if(!window.confirm(`¿Descartar la captura local de ${mov.nombre||'este alumno'}? Esto NO cambia el pago en Firebase; solo elimina el intento pendiente de este celular.`))return;
+    try{
+      await eliminarPendienteOffline(mov.clave);
+      setPendientesOffline(actual=>actual.filter(m=>m.clave!==mov.clave));
+    }catch(error){setToast(`No se pudo quitar la captura local: ${error.message}`);}
+  };
   const estadoAlumno=e=>{
     if(!vigenteParaRegistrar)return 'sin-dato';
     if(esAnterior && esPagoLegado(pagosLegado,e.id,semana))return 'pagado';
-    return estadoSemana(pagosSemana,e.id,semana);
+    const remoto=estadoSemana(pagosSemana,e.id,semana);
+    const pendiente=pendienteDe(e);
+    return pendiente&&!enLinea
+      ?(pendiente.deseado==='pagado'?'pagado':'pendiente')
+      :remoto;
   };
   const detalleSemana=lista.map(e=>({...e,estado:estadoAlumno(e)}));
   const pagaron=detalleSemana.filter(e=>estadoAlumno(e)==='pagado').length;
   const pendientes=detalleSemana.filter(e=>estadoAlumno(e)==='pendiente').length;
+  // Las capturas locales NO aumentan el número de pagos confirmados.
+  const pagaronConfirmados=vigenteParaRegistrar?lista.filter(e=>
+    (esAnterior&&esPagoLegado(pagosLegado,e.id,semana))
+    ||estadoSemana(pagosSemana,e.id,semana)==='pagado').length:0;
+  const pagaronEnResumen=enLinea?pagaron:pagaronConfirmados;
+  const pendientesEnResumen=enLinea?pendientes:lista.length-pagaronConfirmados;
   const consulta=normalizarBusquedaNombre(search.trim());
   const visible=detalleSemana.filter(e=>!consulta||normalizarBusquedaNombre([e.nombreVisible,e.nombre,e.aliasLegado,e.control].join(' ')).includes(consulta)).filter(e=>filtro==='todos'||estadoAlumno(e)===filtro)
     .sort((a,b)=>!esAdmin&&registroFijado?(a.id===registroFijado?-1:b.id===registroFijado?1:0):0);
@@ -393,6 +630,8 @@ export default function App() {
   useEffect(()=>{primerEvento.current=null;},[periodoId]);
 
   const withOperation=async(label,fn)=>{
+    // El indicador offline distingue la captura local de la confirmación.
+
     if(operacion)return;
     setOperacion(label);
     try {const result=await fn();if(typeof result==='string')setToast(result);}
@@ -418,6 +657,21 @@ export default function App() {
       localStorage.setItem('ag:salon',salon);
     }catch(error){setErrorAcceso(error.message||'No fue posible ingresar a tu salón.');}
     finally{setOperacion('');}
+  };
+  const cerrarSesion=async()=>{
+    if(!usuario)return;
+    const guardados=pendientesOffline.filter(m=>m.uid===usuario.uid).length;
+    if((!enLinea||guardados>0)&&!window.confirm(
+      guardados>0
+        ?`Tienes ${guardados} pago(s) SIN sincronizar. Si cierras sesión, seguirán guardados, pero no se enviarán hasta que vuelvas a iniciar sesión con internet. ¿Continuar?`
+        :'Sin conexión no podrás ingresar de nuevo hasta recuperar internet. ¿Cerrar la sesión guardada?'
+    ))return;
+    const uid=usuario.uid;
+    try{
+      await signOut(auth);
+      setVistaOffline(null);setCopiaOfflineLista(false);
+      await borrarVistaOffline(uid);
+    }catch(error){setToast('No se pudo cerrar completamente la sesión: '+(error?.message||'Error'));}
   };
   const signIn=async e=>{
     e.preventDefault();setLoginBusy(true);setLoginError('');
@@ -546,6 +800,10 @@ export default function App() {
   };
   const registrarPago=async e=>{
     if(!esAdmin||!vigenteParaRegistrar||vacacionesActivas||periodo?.meta?.cerradoEn)return;
+    if(!enLinea){
+      await withOperation(`guardar-local:${e.id}`,async()=>{await encolarMovimiento(e,'pagado');});
+      return;
+    }
     const key=pagoClave(e.id,semana);
     if(pagosSemana[key]?.estado==='pagado' || (esAnterior && esPagoLegado(pagosLegado,e.id,semana)))return;
     if(pagosSemana[key]?.estado==='anulado'){
@@ -581,6 +839,10 @@ export default function App() {
   };
   const anularPago=async e=>{
     if(!esAdmin||!vigenteParaRegistrar||vacacionesActivas||periodo?.meta?.cerradoEn)return;
+    if(!enLinea){
+      await withOperation(`anular-local:${e.id}`,async()=>{await encolarMovimiento(e,'anulado');});
+      return;
+    }
     // Un toque, sin solicitar motivo. Cada alternancia se registra en
     // historial con usuario y fecha, sin borrar el registro original.
     await withOperation(`anular:${e.id}`,async()=>{
@@ -624,7 +886,7 @@ export default function App() {
   };
   const ingresarExtraGeneral=async e=>{
     e.preventDefault();
-    if(!esAdminGeneral||periodo?.meta?.cerradoEn||!ahorroNuevoActivo)return;
+    if(!enLinea||!esAdminGeneral||periodo?.meta?.cerradoEn||!ahorroNuevoActivo)return;
     const monto=Number(montoExtra);
     if(!Number.isSafeInteger(monto)||monto<1||monto>1000000){
       setToast('Introduce un importe entero positivo, máximo $1,000,000.');return;
@@ -863,34 +1125,43 @@ export default function App() {
         <div className="ag-brand"><img src="/icons/cerdito-192.png" alt="Cerdito de Ahorro Grupal"/><div><strong>Ahorro<span>Grupal</span></strong><small>Ingeniería Industrial</small></div></div>
         <div className="ag-header-actions">
           {tieneAcceso ? <span className="ag-admin-pill"><ShieldCheck size={16}/> {esAdminGeneral?'Admin. general':esResponsable?`Responsable ${salonId}`:`Salón ${salonId}`}</span> : <button className="ag-icon" type="button" title="Acceso administrativo" onClick={()=>setLoginOpen(true)}><LockKeyhole size={21}/></button>}
-          {usuario&&<button className="ag-icon" type="button" title="Cerrar sesión" onClick={()=>signOut(auth)}><LogOut size={19}/></button>}
+          {usuario&&<button className="ag-icon" type="button" title="Cerrar sesión" onClick={cerrarSesion}><LogOut size={19}/></button>}
           {(!tieneAcceso||esAdmin)&&<button className="ag-icon" type="button" title="Menú" onClick={()=>setMostrarMenu(!mostrarMenu)}><Menu size={22}/></button>}
         </div>
       </header>
       {mostrarMenu&&(!tieneAcceso||esAdmin)&&<nav className="ag-menu">
           {esAdminGeneral&&<button onClick={()=>{setVista('panel');setMostrarMenu(false);}}>Panel general</button>}
           {tieneAcceso&&<button onClick={()=>{setVista('pagos');setMostrarMenu(false);}}>Aportaciones</button>}
-          {esAdmin&&<button onClick={()=>{setVista('consulta');setMostrarMenu(false);}}>Consultar otros salones</button>}
-          {esAdmin&&<button onClick={()=>{setVista('profesores');setMostrarMenu(false);}}>Profesores</button>}
-          {esAdmin&&<button onClick={()=>{setVista('gestion');setMostrarMenu(false);}}>Ciclos y grupos</button>}
-          {esAdminGeneral&&<button onClick={()=>{setVista('roles');setMostrarMenu(false);}}>Responsables de salón</button>}
-          {esAdminGeneral&&<button onClick={()=>{setVista('lectores');setMostrarMenu(false);}}>Códigos de acceso</button>}
+          {enLinea&&esAdmin&&<button onClick={()=>{setVista('consulta');setMostrarMenu(false);}}>Consultar otros salones</button>}
+          {enLinea&&esAdmin&&<button onClick={()=>{setVista('profesores');setMostrarMenu(false);}}>Profesores</button>}
+          {enLinea&&esAdmin&&<button onClick={()=>{setVista('gestion');setMostrarMenu(false);}}>Ciclos y grupos</button>}
+          {enLinea&&esAdminGeneral&&<button onClick={()=>{setVista('roles');setMostrarMenu(false);}}>Responsables de salón</button>}
+          {enLinea&&esAdminGeneral&&<button onClick={()=>{setVista('lectores');setMostrarMenu(false);}}>Códigos de acceso</button>}
           <button onClick={()=>{instalar();setMostrarMenu(false);}}>Instalar app</button>
         </nav>}
       {!tieneAcceso ? <AccesoSalon abrirLogin={()=>setLoginOpen(true)} ingresarConCodigo={ingresarConCodigo}
-        ocupado={!!operacion} error={errorAcceso} modoDemo={usarEmuladores}/> : <main className="ag-main">
+        ocupado={!!operacion} error={errorAcceso} modoDemo={usarEmuladores} sinConexion={!enLinea}/> : <main className="ag-main">
+        {!enLinea&&<div className="ag-offline-banner" role="status">
+          <WifiOff size={20}/><div><strong>Modo sin conexión</strong>
+          <span>Última información guardada. Los cambios estarán pendientes hasta conectar.
+          {vistaOffline?.actualizadoEn&&` Último respaldo: ${fechaLarga(vistaOffline.actualizadoEn)}.`}</span></div>
+        </div>}
+        {enLinea&&sincronizandoOffline&&<div className="ag-sync-banner" role="status"><RefreshCcw size={19}/> Sincronizando pagos pendientes…</div>}
+        {enLinea&&copiaOfflineLista&&<div className="ag-cache-ready" role="status">
+          <CheckCircle2 size={16}/> Este dispositivo ya tiene una copia para entrar sin internet.
+        </div>}
         {dbError&&<div className="ag-error"><AlertTriangle size={18}/> {dbError}</div>}
         <div className="ag-intro ag-intro-compact"><div><span className="ag-kicker">{esAdminGeneral?'ADMINISTRACIÓN GENERAL':esResponsable?`RESPONSABLE · SALÓN ${salonId}`:`SALÓN ${salonId}`} {periodo?.meta?.cerradoEn?' · CICLO ARCHIVADO':''}</span><h1>{esAdminGeneral?'Panel general':esAdmin?'Registro de pagos':'Mi ahorro grupal'}</h1></div><div className="ag-week-pill ag-week-monthly"><CalendarClock size={18}/><span><strong>{semanaActualEtiqueta}</strong></span></div></div>
         {vacacionesActivas&&<div className="ag-note"><PauseCircle size={17}/> Vacaciones activas: {semanaActualEtiqueta} congelada. No se registran aportaciones ni nuevas semanas pendientes.</div>}
         {esAdminGeneral&&<div className="ag-selectors">
-          <label>Ciclo escolar<select value={periodoId} onChange={e=>cambiarPeriodo(e.target.value)}>{periodKeys.length ? periodKeys.map(k=><option key={k} value={k}>{periodos[k]?.meta?.nombre||k}</option>):<option value={defaultPeriod}>Sin listas importadas</option>}</select></label>
-          <label>Salón<select value={salonId} onChange={e=>cambiarSalon(e.target.value)}>{salones.length ? salones.map(k=><option key={k} value={k}>{periodo?.salones?.[k]?.nombre||`Salón ${k}`}</option>):<option value="507">Sin salones</option>}</select></label>
+          <label>Ciclo escolar<select disabled={!enLinea} value={periodoId} onChange={e=>cambiarPeriodo(e.target.value)}>{periodKeys.length ? periodKeys.map(k=><option key={k} value={k}>{periodos[k]?.meta?.nombre||k}</option>):<option value={defaultPeriod}>Sin listas importadas</option>}</select></label>
+          <label>Salón<select disabled={!enLinea} value={salonId} onChange={e=>cambiarSalon(e.target.value)}>{salones.length ? salones.map(k=><option key={k} value={k}>{periodo?.salones?.[k]?.nombre||`Salón ${k}`}</option>):<option value="507">Sin salones</option>}</select></label>
         </div>}
 
         {esAdmin&&<div className="ag-tabs" aria-label="Apartados principales">
           {esAdminGeneral&&<button className={vistaActiva==='panel'?'active':''} onClick={()=>setVista('panel')}><LayoutDashboard size={17}/> Inicio</button>}
           <button className={vistaActiva==='pagos'?'active':''} onClick={()=>setVista('pagos')}><Wallet size={17}/> Registrar pagos</button>
-          <button className={vistaActiva==='consulta'?'active':''} onClick={()=>setVista('consulta')}><UsersRound size={17}/> Consultar salones</button>
+          {enLinea&&<button className={vistaActiva==='consulta'?'active':''} onClick={()=>setVista('consulta')}><UsersRound size={17}/> Consultar salones</button>}
 
         </div>}
         {vistaActiva==='panel'&&esAdminGeneral&&<>
@@ -911,7 +1182,7 @@ export default function App() {
                 <input type="number" min="1" max="1000000" step="1" value={montoExtra}
                   onChange={e=>setMontoExtra(e.target.value)} placeholder="Ej. 150" required/>
               </label>
-              <SmallButton type="submit" variant="primary" disabled={!!operacion||!ahorroNuevoActivo||!!periodo?.meta?.cerradoEn}>
+              <SmallButton type="submit" variant="primary" disabled={!enLinea||!!operacion||!ahorroNuevoActivo||!!periodo?.meta?.cerradoEn}>
                 <Plus size={17}/> Agregar al fondo general
               </SmallButton>
             </form>
@@ -927,23 +1198,37 @@ export default function App() {
           <Panel title="¿Qué necesitas hacer?" icon={LayoutDashboard}>
             <div className="ag-general-actions">
               <button onClick={()=>setVista('pagos')}><Wallet size={25}/><strong>Registrar aportaciones</strong><span>Elegir salón y revisar pagos semanales</span></button>
-              <button onClick={()=>setVista('roles')}><UserCog size={25}/><strong>Administrar responsables</strong><span>Consultar y administrar las dos plazas por salón</span></button>
-              <button onClick={()=>setVista('gestion')}><FileSpreadsheet size={25}/><strong>Estudiantes y semestres</strong><span>Importar listas y gestionar ciclos</span></button>
+              <button disabled={!enLinea} onClick={()=>setVista('roles')}><UserCog size={25}/><strong>Administrar responsables</strong><span>Consultar y administrar las dos plazas por salón</span></button>
+              <button disabled={!enLinea} onClick={()=>setVista('gestion')}><FileSpreadsheet size={25}/><strong>Estudiantes y semestres</strong><span>Importar listas y gestionar ciclos</span></button>
 
             </div>
           </Panel>
         </>}
         {vistaActiva==='pagos'&&<>
+          {movimientosActuales.length>0&&<section className="ag-offline-queue" aria-label="Capturas guardadas sin conexión">
+            <div className="ag-offline-queue-head"><CloudUpload size={19}/>
+              <strong>{movimientosActuales.length} captura(s) {enLinea?'pendientes':'guardadas sin conexión'}</strong>
+              {enLinea&&<SmallButton disabled={sincronizandoOffline} onClick={()=>setReintentarOffline(v=>v+1)}><RefreshCcw size={16}/> Sincronizar</SmallButton>}
+            </div>
+            {movimientosActuales.map(m=><div className="ag-offline-queue-row" key={m.clave}>
+              <div><strong>{m.nombre||m.estudianteId}</strong>
+                <small>{etiquetaSemana(m.periodo,m.semana,periodos[m.periodo]?.meta)} · {m.deseado==='pagado'?'Agregar pago':'Anular pago'}</small>
+                <small className={m.estado==='conflicto'?'ag-sync-conflict':'ag-sync-pending'}>
+                  {m.estado==='conflicto'?m.mensaje||'Conflicto con otro registro':'Aún no confirmado en Firebase'}
+                </small></div>
+              {m.estado==='conflicto'&&<SmallButton onClick={()=>descartarMovimiento(m)}>Descartar intento</SmallButton>}
+            </div>)}
+          </section>}
           {!esAdmin&&<MiRegistro salon={salonId} semana={semanaActualEtiqueta} lista={lista}
             seleccionado={registroFijado} pagos={pagos} estado={estadoMiRegistro} guardar={guardarRegistroFijado}/>}
           {esAdmin&&<section className="ag-week-glance" aria-label="Avance semanal">
             <div className="ag-week-glance-heading"><span><CalendarClock size={18}/> {etiquetaSemana(periodoId,semana,periodo?.meta)}</span><strong>{cargando?'—':lista.length} estudiantes</strong></div>
             <div className="ag-week-glance-numbers">
-              <div><strong>{vigenteParaRegistrar?pagaron:'—'}</strong><span>Pagaron</span></div>
-              <div><strong>{vigenteParaRegistrar?pendientes:'—'}</strong><span>Pendientes</span></div>
+              <div><strong>{vigenteParaRegistrar?pagaronEnResumen:'—'}</strong><span>{enLinea?'Pagaron':'Confirmados en la última copia'}</span></div>
+              <div><strong>{vigenteParaRegistrar?pendientesEnResumen:'—'}</strong><span>Pendientes</span></div>
               <div><strong>{pesos(cuotaSemanal)}</strong><span>Por semana</span></div>
             </div>
-            <div className="ag-week-glance-bar" aria-hidden="true"><div style={{width:`${lista.length&&vigenteParaRegistrar?Math.min(100,Math.round((pagaron/lista.length)*100)):0}%`}}/></div>
+            <div className="ag-week-glance-bar" aria-hidden="true"><div style={{width:`${lista.length&&vigenteParaRegistrar?Math.min(100,Math.round((pagaronEnResumen/lista.length)*100)):0}%`}}/></div>
           </section>}
           {esAdmin&&reporteError&&<div className="ag-error" role="alert"><AlertTriangle size={18}/>{reporteError}</div>}
           {esAdmin&&reporteFondos&&!reporteFondos.cifrasConfiables&&<div className="ag-error"><AlertTriangle size={18}/> Existen retiros que necesitan conciliación antes de utilizar estos saldos.</div>}
@@ -956,8 +1241,11 @@ export default function App() {
             {esAnterior&&<div className="ag-note"><History size={16}/> Los pagos de este periodo se mantienen separados del fondo actual y no generan deudas automáticas.</div>}
             <div className="ag-toolbar"><label className="ag-search"><Search size={17}/><input placeholder="Buscar por nombre o control..." value={search} onChange={e=>setSearch(e.target.value)}/></label><div className="ag-filters"><button className={filtro==='todos'?'active':''} onClick={()=>setFiltro('todos')}>Todos</button><button className={filtro==='pagado'?'active':''} onClick={()=>setFiltro('pagado')}>Pagaron</button><button className={filtro==='pendiente'?'active':''} onClick={()=>setFiltro('pendiente')}>{esAnterior?'Sin registrar':'Pendientes'}</button></div></div>
             {!vigenteParaRegistrar&&<div className="ag-note"><History size={16}/> Esta semana corresponde al historial anterior o a un periodo sin registros detallados. No se muestran supuestos adeudos.</div>}
-            <div className="ag-student-list">{visible.map(e=>{const estado=estadoAlumno(e);return <article className={`ag-student${!esAdmin&&registroFijado===e.id?' ag-student-pinned':''}`} key={e.id}><span className="ag-avatar" aria-hidden="true"><UserRound size={22} strokeWidth={2.2}/></span><div className="ag-student-info"><strong title={e.nombre}>{e.nombreVisible}</strong></div><span className={`ag-status ag-status-${estado}`}>{estado==='pagado'?<><Check size={14}/> Pagó</>:estado==='pendiente'?(esAnterior?'Sin registrar':'Pendiente'):'Sin desglose'}</span>{esAdmin&&vigenteParaRegistrar&&!vacacionesActivas&&!periodo?.meta?.cerradoEn&&<div className="ag-pay-actions">{estado==='pagado' ? (esAnterior&&esPagoLegado(pagosLegado,e.id,semana) ? <span title="Pago legado conservado; no se puede modificar aquí"><LockKeyhole size={18}/></span> : <button title="Anular el pago (un toque; se conserva en el historial)" aria-label={`Anular aporte de ${e.nombreVisible} en ${etiquetaSemana(periodoId,semana,periodo?.meta)}`} disabled={!!operacion} onClick={()=>anularPago(e)}><Minus size={17}/></button>) : <button title={`Registrar ${pesos(cuotaSemanal)} esta semana`} disabled={!!operacion} onClick={()=>registrarPago(e)}><Plus size={18}/></button>}</div>}</article>;})}{!visible.length&&<div className="ag-empty-small">No hay integrantes para este filtro.</div>}</div>
-            <div className="ag-list-foot">{vigenteParaRegistrar?`${pagaron} pagaron · ${pendientes} pendientes`:'No hay desglose disponible para esta semana'}</div>
+            <div className="ag-student-list">{visible.map(e=>{const estado=estadoAlumno(e),pendienteLocal=pendienteDe(e);return <article className={`ag-student${!esAdmin&&registroFijado===e.id?' ag-student-pinned':''}`} key={e.id}><span className="ag-avatar" aria-hidden="true"><UserRound size={22} strokeWidth={2.2}/></span><div className="ag-student-info"><strong title={e.nombre}>{e.nombreVisible}</strong></div><span className={`ag-status ag-status-${estado}`}>{estado==='pagado'?<><Check size={14}/> Pagó</>:estado==='pendiente'?(esAnterior?'Sin registrar':'Pendiente'):'Sin desglose'}</span>{pendienteLocal&&<span className="ag-local-indicator">Sin sincronizar</span>}{esAdmin&&vigenteParaRegistrar&&!vacacionesActivas&&!periodo?.meta?.cerradoEn&&<div className="ag-pay-actions">{estado==='pagado' ? (esAnterior&&esPagoLegado(pagosLegado,e.id,semana) ? <span title="Pago legado conservado; no se puede modificar aquí"><LockKeyhole size={18}/></span> : <button title="Anular el pago (un toque; se conserva en el historial)" aria-label={`Anular aporte de ${e.nombreVisible} en ${etiquetaSemana(periodoId,semana,periodo?.meta)}`} disabled={!!operacion||sincronizandoOffline||(enLinea&&!!pendienteLocal)} onClick={()=>anularPago(e)}><Minus size={17}/></button>) : <button title={`Registrar ${pesos(cuotaSemanal)} esta semana`} disabled={!!operacion||sincronizandoOffline||(enLinea&&!!pendienteLocal)} onClick={()=>registrarPago(e)}><Plus size={18}/></button>}</div>}</article>;})}{!visible.length&&<div className="ag-empty-small">No hay integrantes para este filtro.</div>}</div>
+            <div className="ag-list-foot">{vigenteParaRegistrar?(enLinea
+  ?`${pagaron} pagaron · ${pendientes} pendientes`
+  :`${pagaronConfirmados} confirmados en la última copia · ${movimientosActuales.length} cambios sin sincronizar`)
+  :'No hay desglose disponible para esta semana'}</div>
           </Panel>}
           </details>
           {esAdmin&&<details className="ag-disclosure ag-finance-disclosure">
@@ -1128,7 +1416,7 @@ export default function App() {
         <SmallButton onClick={()=>setEnlaceResponsable(null)}>Cerrar</SmallButton>
       </div>
     </div>}
-    {loginOpen&&<div className="ag-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setLoginOpen(false);}}><div className="ag-modal" role="dialog" aria-modal="true" aria-label="Iniciar sesión"><button className="ag-modal-close" onClick={()=>setLoginOpen(false)}><X size={20}/></button><div className="ag-modal-mark"><LockKeyhole size={26}/></div><h2>Iniciar sesión</h2><p>Inicia sesión con el correo y la contraseña de tu cuenta. Para estudiantes basta el código de su salón. Este inicio de sesión es para administradores y responsables.</p><form onSubmit={signIn}><label>Correo electrónico<input type="email" autoComplete="username" required value={email} onChange={e=>setEmail(e.target.value)}/></label><label>Contraseña<div className="ag-password"><input type={seePassword?'text':'password'} autoComplete="current-password" required value={password} onChange={e=>setPassword(e.target.value)}/><button type="button" onClick={()=>setSeePassword(!seePassword)}>{seePassword?<EyeOff size={18}/>:<Eye size={18}/>}</button></div></label>{loginError&&<div className="ag-error">{loginError}</div>}<SmallButton type="submit" variant="primary" disabled={loginBusy}><ShieldCheck size={18}/> {loginBusy?'Verificando…':'Iniciar sesión'}</SmallButton></form><button className="ag-link" type="button" onClick={resetPassword}>¿Olvidaste tu contraseña?</button>{usuario&&!tieneAcceso&&<button className="ag-link" type="button" onClick={()=>signOut(auth)}>Cerrar sesión actual</button>}</div></div>}
+    {loginOpen&&<div className="ag-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setLoginOpen(false);}}><div className="ag-modal" role="dialog" aria-modal="true" aria-label="Iniciar sesión"><button className="ag-modal-close" onClick={()=>setLoginOpen(false)}><X size={20}/></button><div className="ag-modal-mark"><LockKeyhole size={26}/></div><h2>Iniciar sesión</h2><p>Inicia sesión con el correo y la contraseña de tu cuenta. Para estudiantes basta el código de su salón. Este inicio de sesión es para administradores y responsables.</p><form onSubmit={signIn}><label>Correo electrónico<input type="email" autoComplete="username" required value={email} onChange={e=>setEmail(e.target.value)}/></label><label>Contraseña<div className="ag-password"><input type={seePassword?'text':'password'} autoComplete="current-password" required value={password} onChange={e=>setPassword(e.target.value)}/><button type="button" onClick={()=>setSeePassword(!seePassword)}>{seePassword?<EyeOff size={18}/>:<Eye size={18}/>}</button></div></label>{loginError&&<div className="ag-error">{loginError}</div>}<SmallButton type="submit" variant="primary" disabled={loginBusy}><ShieldCheck size={18}/> {loginBusy?'Verificando…':'Iniciar sesión'}</SmallButton></form><button className="ag-link" type="button" onClick={resetPassword}>¿Olvidaste tu contraseña?</button>{usuario&&!tieneAcceso&&<button className="ag-link" type="button" onClick={cerrarSesion}>Cerrar sesión actual</button>}</div></div>}
     {modalInstalar&&<div className="ag-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setModalInstalar(false);}}><div className="ag-modal" role="dialog" aria-modal="true" aria-label="Instalar aplicación"><button className="ag-modal-close" onClick={()=>setModalInstalar(false)}><X size={20}/></button><img src="/icons/cerdito-192.png" alt="Cerdito" width="80" height="80"/><h2>Instalar AhorroGrupal</h2><p>Android: menú de Chrome → Instalar app. iPhone: Safari → Compartir → Añadir a inicio. Computadora: opción Instalar en Chrome o Edge.</p></div></div>}
   </div>;
 }

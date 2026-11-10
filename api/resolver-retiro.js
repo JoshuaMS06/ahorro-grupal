@@ -2,6 +2,7 @@ import {adminDatabase,usuarioVerificado} from '../lib/adminServidor.js';
 import {resumirFondos} from '../lib/fondos.js';
 import {corteActivo,rutaRetiros,resumirAhorroReiniciado} from '../lib/reinicioContable.js';
 import {atenderCorreccionPago} from '../lib/apiCorreccionPago.js';
+import {atenderPagoOffline} from '../lib/apiPagoOffline.js';
 import {atenderRetiroDirecto} from '../lib/apiRetiroDirecto.js';
 import {atenderIngresoExtra} from '../lib/apiIngresoExtra.js';
 import {publicarAvisoRetiro} from '../lib/avisosCarrera.js';
@@ -13,6 +14,7 @@ export default async function handler(req,res){
   // Reutiliza el endpoint financiero existente: Vercel Hobby ya alcanza el
   // máximo de funciones. Los retiros mantienen sus permisos generales.
   if(req.body?.operacion==='correccionPago')return atenderCorreccionPago(req,res);
+  if(req.body?.operacion==='pagoOffline')return atenderPagoOffline(req,res);
   if(req.body?.operacion==='retiroDirecto')return atenderRetiroDirecto(req,res);
   if(req.body?.operacion==='ingresoExtra')return atenderIngresoExtra(req,res);
   const {periodo,salon,retiroId,estado}=req.body||{};

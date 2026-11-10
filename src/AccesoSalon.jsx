@@ -7,22 +7,22 @@ const SALONES_DEMO=['107','307','507','707','907'].map(salon=>({
   periodo:'2026-2027-A',salon,nombre:`Salón ${salon}`
 }));
 
-export default function AccesoSalon({abrirLogin,ingresarConCodigo,ocupado,error,modoDemo}){
+export default function AccesoSalon({abrirLogin,ingresarConCodigo,ocupado,error,modoDemo,sinConexion=false}){
   const [salones,setSalones]=useState(modoDemo?SALONES_DEMO:[]);
-  const [cargando,setCargando]=useState(!modoDemo);
+  const [cargando,setCargando]=useState(!modoDemo&&!sinConexion);
   const [errorCatalogo,setErrorCatalogo]=useState('');
   const [seleccion,setSeleccion]=useState('');
   const [codigo,setCodigo]=useState('');
 
   useEffect(()=>{
-    if(modoDemo)return;
+    if(modoDemo||sinConexion)return;
     let vivo=true;
     fetch('/api/salones-disponibles',{cache:'no-store'})
       .then(async r=>{const d=await r.json();if(!r.ok)throw Error(d.error||'No se pudo consultar los salones.');return d;})
       .then(d=>{if(vivo){setSalones(d.salones||[]);setCargando(false);}})
       .catch(e=>{if(vivo){setCargando(false);setErrorCatalogo(e.message);}});
     return ()=>{vivo=false;};
-  },[modoDemo]);
+  },[modoDemo,sinConexion]);
 
   const seleccionado=salones.find(s=>`${s.periodo}/${s.salon}`===seleccion);
   const normalizado=codigo.replace(/[\s-]/g,'').toUpperCase();
@@ -42,10 +42,14 @@ export default function AccesoSalon({abrirLogin,ingresarConCodigo,ocupado,error,
         <h1>Tu salón, tu espacio</h1>
         <p>Consulta las aportaciones de tu grupo con un código de acceso. No necesitas correo ni contraseña.</p>
       </div>
+      {sinConexion&&<div className="ag-offline-banner" role="status">
+        <strong>Sin conexión a internet</strong>
+        <p>Para preparar este celular, abre Ahorro Grupal con internet una vez, entra con el PIN y deja que guarde tu salón. Después podrás abrir la app sin Wi-Fi ni datos, mientras mantengas la sesión en el dispositivo. Si cerraste sesión o nunca ingresaste, necesitas conectarte una vez.</p>
+      </div>}
       <h2 className="ag-access-subtitle">1. Selecciona tu salón</h2>
       <p className="ag-muted">Elige el grupo al que perteneces.</p>
       {errorCatalogo&&<div className="ag-error">{errorCatalogo}</div>}
-      {cargando?<p className="ag-muted">Consultando salones disponibles…</p>:
+      {cargando&&!sinConexion?<p className="ag-muted">Consultando salones disponibles…</p>:
         <div className="ag-access-rooms">
           {salones.map(s=><button type="button" key={`${s.periodo}/${s.salon}`}
             className={seleccion===`${s.periodo}/${s.salon}`?'active':''}
@@ -65,7 +69,7 @@ export default function AccesoSalon({abrirLogin,ingresarConCodigo,ocupado,error,
             maxLength={19} disabled={!seleccionado||ocupado} required/>
         </label>
         <button type="submit" className="ag-btn ag-btn-primary ag-access-code-submit"
-          disabled={!seleccionado||!codigoValido||ocupado}>
+          disabled={sinConexion||!seleccionado||!codigoValido||ocupado}>
           <LockKeyhole size={19}/> {ocupado?'Comprobando código…':`Entrar al salón ${seleccionado?.salon||''}`}
         </button>
       </form>

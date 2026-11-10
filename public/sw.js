@@ -1,5 +1,9 @@
-/* Caché del armazón PWA; nunca almacena datos de Firebase ni contraseñas. */
-const VERSION = 'ahorro-shell-v14-profesores-507-20261102';
+/* PWA abre offline tras preparación inicial en línea.
+ * Sólo archivos estáticos; JAMÁS cachear respuestas API, Auth ni Firebase.
+ * Los datos autorizados y pagos pendientes viven en IndexedDB, separados
+ * por UID de Firebase y se revalidan en el servidor al reconectar.
+ */
+const VERSION = 'ahorro-shell-v18-offline-autorizado-20261110';
 const SHELL = ['/', '/manifest.webmanifest', '/icons/cerdito-192.png', '/icons/cerdito-512.png'];
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(VERSION).then(async (cache) => {
@@ -24,8 +28,8 @@ self.addEventListener('fetch', (event) => {
   const request = event.request;
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
-  // Evitar cachear llamadas externas a Firebase/Auth y cualquier solicitud no local.
-  if (url.origin !== self.location.origin) return;
+  // Nunca interceptar peticiones financieras, login ni comprobación real de red.
+  if (url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
   if (request.mode === 'navigate') {
     event.respondWith(fetch(request).then((response) => {
       if (response.ok) { const clone = response.clone(); caches.open(VERSION).then((cache) => cache.put('/', clone)).catch(() => {}); }
